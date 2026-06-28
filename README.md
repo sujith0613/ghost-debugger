@@ -1,5 +1,15 @@
 # Ghost Debugger
 
+<p align="center">
+  <img src="https://img.shields.io/badge/Go-1.23+-00ADD8?logo=go&logoColor=white" alt="Go">
+  <img src="https://img.shields.io/badge/Python-3.12+-3776AB?logo=python&logoColor=white" alt="Python">
+  <img src="https://img.shields.io/badge/LangGraph-0.3-FF6F00?logo=langchain&logoColor=white" alt="LangGraph">
+  <img src="https://img.shields.io/badge/gRPC-protobuf-FF4081" alt="gRPC">
+  <img src="https://img.shields.io/badge/OpenTelemetry-1.32-000000?logo=opentelemetry&logoColor=white" alt="OpenTelemetry">
+  <img src="https://img.shields.io/badge/License-MIT-yellow" alt="License">
+  <img src="https://img.shields.io/badge/build-passing-success" alt="Build">
+</p>
+
 > An AI-powered distributed incident analysis system that ingests
 > OpenTelemetry traces, Prometheus metrics, and structured logs from
 > instrumented microservices, routes them through a LangGraph multi-agent
@@ -33,75 +43,61 @@ automatically and reasons about causality. Ghost Debugger is that tool.
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         TEST MICROSERVICES                              │
-│                                                                         │
-│  [service_a] ──HTTP+OTel──► [service_b] ──HTTP+OTel──► [service_c]     │
-│       │                          │                           │          │
-│  [failure_injector] — chaos control plane (latency/errors/memory)      │
-└──────────┬───────────────────────┬───────────────────────────┬──────────┘
-           │ OTel gRPC             │ OTel gRPC                 │ OTel gRPC
-           ▼                       ▼                           ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                        GO TELEMETRY GATEWAY                             │
-│                                                                         │
-│  gRPC server (IngestTrace, IngestLog, IngestMetric)                     │
-│       │                                                                 │
-│  Token Bucket Rate Limiter (per-service, 10K capacity, 1K/s refill)     │
-│       │                                                                 │
-│  Worker Pool (20 goroutines → Jaeger OTLP forward)                      │
-│       │                                                                 │
-│  Incident Detector (sliding window: error_rate > 5% for 60s)           │
-│       │                                                                 │
-│  Circuit Breaker (CLOSED→OPEN after 5 failures, 30s timeout)           │
-│       │                                                                 │
-│  ──► Agent Service (gRPC, AnalyzeIncident RPC)                         │
-│                                                                         │
-│  /health    /metrics (Prometheus)                                       │
-└─────────────────────────────────────────────────────────────────────────┘
-           │                │                │
-           │ gRPC forward   │ scrape         │ query
-           ▼                ▼                ▼
-    ┌──────────┐    ┌──────────────┐   ┌───────────┐
-    │  Jaeger  │    │  Prometheus  │   │ ChromaDB  │
-    │ (traces) │    │  (metrics)   │   │  (RAG)    │
-    └──────────┘    └──────────────┘   └───────────┘
-           │                │                │
-           └────────────────┴────────────────┘
-                            │
-                     queried by agents
-                            │
-┌───────────────────────────▼─────────────────────────────────────────────┐
-│                    PYTHON AGENT SERVICE (LangGraph)                     │
-│                                                                         │
-│  AnalyzeIncident gRPC ──► StateGraph (PostmortemState TypedDict)        │
-│                                                                         │
-│  LLM Provider (auto-selected at startup):                               │
-│    GOOGLE_API_KEY set   → Gemini (cloud, faster)                       │
-│    GOOGLE_API_KEY unset → Ollama (local, no API cost)                  │
-│                                                                         │
-│  [Triage Agent]                                                         │
-│      ▼ SEV1/SEV2 → parallel fan-out via Send()                         │
-│  [Trace Analyzer] ‖ [Log Correlator] ‖ [Metric Reasoner]               │
-│      ▼ fan-in: wait for all three (_dedupe_merge reducer)               │
-│  [Correlation Agent] ──► ChromaDB RAG search                           │
-│      ▼                                                                  │
-│  [Root Cause Agent] ──► pure reasoning, confidence scoring             │
-│      ▼                                                                  │
-│  [Postmortem Writer] ──► structured markdown + ChromaDB store          │
-│                                                                         │
-│  FastAPI /analyze  /incidents  /incidents/{id}/stream (SSE)            │
-└─────────────────────────────────────────────────────────────────────────┘
-                            │
-                     SSE stream
-                            │
-┌───────────────────────────▼─────────────────────────────────────────────┐
-│                    WEB DASHBOARD (single HTML file)                     │
-│                                                                         │
-│  Incident list │ Agent reasoning timeline │ Postmortem report           │
-│  Live SSE updates as each agent completes                               │
-└─────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph Test_Microservices["Test Microservices"]
+        A[service_a] -->|HTTP+OTel| B[service_b]
+        B -->|HTTP+OTel| C[service_c]
+        FI[failure_injector] -.->|chaos control| A & B & C
+    end
+
+    A & B & C -->|OTel gRPC| GW
+
+    subgraph Gateway["Go Telemetry Gateway"]
+        GRPC[gRPC Server<br/>IngestTrace / IngestLog / IngestMetric]
+        RL[Token Bucket Rate Limiter<br/>10K cap · 1K/s refill]
+        WP[Worker Pool<br/>20 goroutines → OTLP forward]
+        ID[Incident Detector<br/>sliding window: error_rate>5% · 60s]
+        CB[Circuit Breaker<br/>CLOSED→OPEN · 5 failures · 30s timeout]
+        GRPC --> RL --> WP --> ID --> CB
+    end
+
+    GW -->|gRPC forward| Jaeger
+    GW -->|scrape| Prometheus
+    GW -->|query| ChromaDB
+
+    subgraph Storage["Backends"]
+        Jaeger[(Jaeger<br/>traces)]
+        Prometheus[(Prometheus<br/>metrics)]
+        ChromaDB[(ChromaDB<br/>RAG)]
+    end
+
+    Jaeger & Prometheus & ChromaDB -->|queried by agents| LLM_PROVIDER
+
+    subgraph Agents["Python Agent Service (LangGraph)"]
+        direction TB
+        LLM_PROVIDER[LLM Provider<br/>Ollama → local (default)<br/>Gemini → cloud (if GOOGLE_API_KEY set)]
+        T[Triage Agent]
+        TA[Trace Analyzer]
+        LC[Log Correlator]
+        MR[Metric Reasoner]
+        CA[Correlation Agent]
+        RCA[Root Cause Agent]
+        PW[Postmortem Writer]
+
+        LLM_PROVIDER --> T
+        T -->|SEV1/SEV2 → Send()| TA & LC & MR
+        TA & LC & MR -->|fan-in| CA
+        CA --> ChromaDB
+        CA --> RCA
+        RCA --> PW
+    end
+
+    PW -->|SSE stream| Dash
+
+    subgraph Dashboard["Web Dashboard"]
+        Dash[Single HTML File<br/>Incident list · Timeline · Report]
+    end
 ```
 
 ---
