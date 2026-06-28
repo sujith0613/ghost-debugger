@@ -137,55 +137,55 @@ for the three signal analysis agents.
 
 ```
 INCIDENT DETECTED (error_rate > 5% for 60s on service_b)
-          â”‚
-          â–¼
-    â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-    â”‚   TRIAGE    â”‚  Queries error_rate, latency_p99, request_rate
-    â”‚   AGENT     â”‚  per suspected service. Confirms affected services.
-    â”‚             â”‚  Output: severity (SEV1/2/3), confirmed_services[]
-    â””â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”˜
-           â”‚
-           â–¼ route_after_triage()
-    â”Œâ”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-    â”‚         PARALLEL ANALYSIS (Send API)    â”‚
-    â”‚                                         â”‚
-    â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-    â”‚  â”‚    TRACE    â”‚  â”‚     LOG      â”‚  â”‚    METRIC    â”‚
-    â”‚  â”‚   AGENT     â”‚  â”‚    AGENT     â”‚  â”‚    AGENT     â”‚
-    â”‚  â”‚             â”‚  â”‚              â”‚  â”‚              â”‚
-    â”‚  â”‚ query_tracesâ”‚  â”‚ query_logs   â”‚  â”‚ query_error_ â”‚
-    â”‚  â”‚ cascade pathâ”‚  â”‚ error patternâ”‚  â”‚  rate, p99,  â”‚
-    â”‚  â”‚ first_error â”‚  â”‚ first_time   â”‚  â”‚  db_conns,   â”‚
-    â”‚  â”‚ _service    â”‚  â”‚              â”‚  â”‚  memory,     â”‚
-    â”‚  â”‚             â”‚  â”‚              â”‚  â”‚  goroutines  â”‚
-    â”‚  â””â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”˜  â””â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”˜  â””â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”˜
-    â”‚         â”‚                â”‚                  â”‚
-    â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
-           â”‚ fan-in: _dedupe_merge reducer on completed_agents
-           â”‚ (waits for ALL three before proceeding)
-           â–¼
-    â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-    â”‚  CORRELATION    â”‚  Builds temporal causal chain from all signals.
-    â”‚  AGENT          â”‚  RAG search: ChromaDB â†’ similar past incidents.
-    â”‚                 â”‚  Output: causal_chain[], similar_incidents[]
-    â””â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
-           â”‚
-           â–¼
-    â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-    â”‚   ROOT CAUSE    â”‚  Pure reasoning â€” no tool calls.
-    â”‚   AGENT         â”‚  First event in causal chain = root cause.
-    â”‚                 â”‚  Output: root_cause string, confidence 0.0-1.0
-    â””â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
-           â”‚
-           â–¼
-    â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-    â”‚   POSTMORTEM    â”‚  Generates structured markdown report.
-    â”‚   WRITER        â”‚  Stores in ChromaDB if confidence â‰¥ 0.5.
-    â”‚                 â”‚  Output: postmortem_report markdown
-    â””â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
-           â”‚
-           â–¼
-         END
+          |
+          v
+    +----------------------+
+    |   TRIAGE             |  Queries error_rate, latency_p99, request_rate
+    |   AGENT              |  per suspected service. Confirms affected services.
+    |                      |  Output: severity (SEV1/2/3), confirmed_services[]
+    +----------+-----------+
+               |
+               v route_after_triage()
+    +----------+-------------------------------------------+
+    |         PARALLEL ANALYSIS (Send API)                  |
+    |                                                        |
+    |  +-------------+  +---------------+  +---------------+ |
+    |  |    TRACE    |  |     LOG       |  |    METRIC     | |
+    |  |   AGENT     |  |    AGENT      |  |    AGENT      | |
+    |  |             |  |               |  |               | |
+    |  | query_traces|  | query_logs    |  | query_error_  | |
+    |  | cascade path|  | error pattern |  |  rate, p99,   | |
+    |  | first_error |  | first_time    |  |  db_conns,    | |
+    |  | _service    |  |               |  |  memory,      | |
+    |  |             |  |               |  |  goroutines   | |
+    |  +------+------+  +------+--------+  +------+--------+ |
+    |         |                |                   |          |
+    +---------+----------------+-------------------+----------+
+              | fan-in: _dedupe_merge reducer on completed_agents
+              | (waits for ALL three before proceeding)
+              v
+    +------------------------+
+    |  CORRELATION           |  Builds temporal causal chain from all signals.
+    |  AGENT                 |  RAG search: ChromaDB -> similar past incidents.
+    |                        |  Output: causal_chain[], similar_incidents[]
+    +----------+-------------+
+               |
+               v
+    +------------------------+
+    |   ROOT CAUSE           |  Pure reasoning - no tool calls.
+    |   AGENT                |  First event in causal chain = root cause.
+    |                        |  Output: root_cause string, confidence 0.0-1.0
+    +----------+-------------+
+               |
+               v
+    +------------------------+
+    |   POSTMORTEM           |  Generates structured markdown report.
+    |   WRITER               |  Stores in ChromaDB if confidence >= 0.5.
+    |                        |  Output: postmortem_report markdown
+    +----------+-------------+
+               |
+               v
+             END
 ```
 
 **Parallel execution detail:**
