@@ -45,59 +45,52 @@ automatically and reasons about causality. Ghost Debugger is that tool.
 
 ```mermaid
 flowchart TD
-    subgraph Test_Microservices["Test Microservices"]
-        A[service_a] -->|HTTP+OTel| B[service_b]
-        B -->|HTTP+OTel| C[service_c]
-        FI[failure_injector] -.->|chaos control| A & B & C
+    subgraph TMS["Test Microservices"]
+        A["service_a"] -->|HTTP+OTel| B["service_b"]
+        B -->|HTTP+OTel| C["service_c"]
+        FI["failure_injector"]
     end
 
-    A & B & C -->|OTel gRPC| GW
-
-    subgraph Gateway["Go Telemetry Gateway"]
-        GRPC[gRPC Server<br>IngestTrace / IngestLog / IngestMetric]
-        RL[Token Bucket Rate Limiter<br>10K cap · 1K/s refill]
-        WP[Worker Pool<br>20 goroutines → OTLP forward]
-        ID[Incident Detector<br>sliding window: error_rate>5% · 60s]
-        CB[Circuit Breaker<br>CLOSED→OPEN · 5 failures · 30s timeout]
-        GRPC --> RL --> WP --> ID --> CB
+    subgraph GTW["Go Telemetry Gateway"]
+        direction LR
+        S["gRPC Server"]
+        RL["Rate Limiter (10K/s)"]
+        WP["Worker Pool (20 goroutines)"]
+        ID["Incident Detector"]
+        CB["Circuit Breaker"]
+        S --> RL --> WP --> ID --> CB
     end
 
-    GW -->|gRPC forward| Jaeger
-    GW -->|scrape| Prometheus
-    GW -->|query| ChromaDB
-
-    subgraph Storage["Backends"]
-        Jaeger[(Jaeger<br>traces)]
-        Prometheus[(Prometheus<br>metrics)]
-        ChromaDB[(ChromaDB<br>RAG)]
+    subgraph STO["Backends"]
+        J["(Jaeger)"]
+        P["(Prometheus)"]
+        CH["(ChromaDB)"]
     end
 
-    Jaeger & Prometheus & ChromaDB -->|queried by agents| LLM_PROVIDER
-
-    subgraph Agents["Python Agent Service (LangGraph)"]
+    subgraph AGS["LangGraph Agent Pipeline"]
         direction TB
-        LLM_PROVIDER[LLM Provider<br>Ollama → local (default)<br>Gemini → cloud (if GOOGLE_API_KEY set)]
-        T[Triage Agent]
-        TA[Trace Analyzer]
-        LC[Log Correlator]
-        MR[Metric Reasoner]
-        CA[Correlation Agent]
-        RCA[Root Cause Agent]
-        PW[Postmortem Writer]
-
-        LLM_PROVIDER --> T
-        T -->|SEV1/SEV2 → Send()| TA & LC & MR
-        TA & LC & MR -->|fan-in| CA
-        CA --> ChromaDB
-        CA --> RCA
-        RCA --> PW
+        LLM["LLM (Ollama / Gemini)"]
+        TRI["Triage Agent"]
+        TRA["Trace Analyzer"]
+        LOG["Log Correlator"]
+        MET["Metric Reasoner"]
+        COR["Correlation Agent"]
+        RCA["Root Cause Agent"]
+        PW["Postmortem Writer"]
+        LLM --> TRI
+        TRI --> TRA & LOG & MET
+        TRA & LOG & MET --> COR
+        COR --> RCA --> PW
     end
 
-    PW -->|SSE stream| Dash
-
-    subgraph Dashboard["Web Dashboard"]
-        Dash[Single HTML File<br>Incident list · Timeline · Report]
+    subgraph DSH["Dashboard"]
+        D["Single HTML File"]
     end
+
+    A & B & C --> S
+    WP --> J & P
+    J & P & CH --> AGS
+    PW --> D
 ```
 
 ---
