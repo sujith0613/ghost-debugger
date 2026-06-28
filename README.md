@@ -54,11 +54,11 @@ flowchart TD
     A & B & C -->|OTel gRPC| GW
 
     subgraph Gateway["Go Telemetry Gateway"]
-        GRPC[gRPC Server<br/>IngestTrace / IngestLog / IngestMetric]
-        RL[Token Bucket Rate Limiter<br/>10K cap · 1K/s refill]
-        WP[Worker Pool<br/>20 goroutines → OTLP forward]
-        ID[Incident Detector<br/>sliding window: error_rate>5% · 60s]
-        CB[Circuit Breaker<br/>CLOSED→OPEN · 5 failures · 30s timeout]
+        GRPC[gRPC Server<br>IngestTrace / IngestLog / IngestMetric]
+        RL[Token Bucket Rate Limiter<br>10K cap · 1K/s refill]
+        WP[Worker Pool<br>20 goroutines → OTLP forward]
+        ID[Incident Detector<br>sliding window: error_rate>5% · 60s]
+        CB[Circuit Breaker<br>CLOSED→OPEN · 5 failures · 30s timeout]
         GRPC --> RL --> WP --> ID --> CB
     end
 
@@ -67,16 +67,16 @@ flowchart TD
     GW -->|query| ChromaDB
 
     subgraph Storage["Backends"]
-        Jaeger[(Jaeger<br/>traces)]
-        Prometheus[(Prometheus<br/>metrics)]
-        ChromaDB[(ChromaDB<br/>RAG)]
+        Jaeger[(Jaeger<br>traces)]
+        Prometheus[(Prometheus<br>metrics)]
+        ChromaDB[(ChromaDB<br>RAG)]
     end
 
     Jaeger & Prometheus & ChromaDB -->|queried by agents| LLM_PROVIDER
 
     subgraph Agents["Python Agent Service (LangGraph)"]
         direction TB
-        LLM_PROVIDER[LLM Provider<br/>Ollama → local (default)<br/>Gemini → cloud (if GOOGLE_API_KEY set)]
+        LLM_PROVIDER[LLM Provider<br>Ollama → local (default)<br>Gemini → cloud (if GOOGLE_API_KEY set)]
         T[Triage Agent]
         TA[Trace Analyzer]
         LC[Log Correlator]
@@ -96,7 +96,7 @@ flowchart TD
     PW -->|SSE stream| Dash
 
     subgraph Dashboard["Web Dashboard"]
-        Dash[Single HTML File<br/>Incident list · Timeline · Report]
+        Dash[Single HTML File<br>Incident list · Timeline · Report]
     end
 ```
 
