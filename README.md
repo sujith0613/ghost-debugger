@@ -191,8 +191,8 @@ is not repeated.
 #    Linux:   curl -fsSL https://ollama.ai/install.sh | sh
 #    Windows: https://ollama.ai/download
 
-# 2. Pull a model (llama3.1:8b is the default)
-ollama pull llama3.1:8b
+# 2. Pull a model (qwen2.5 is recommended — auto-detected at runtime)
+ollama pull qwen2.5
 
 # 3. Clone and start
 git clone https://github.com/sujithm/ghost-debugger.git
@@ -263,9 +263,15 @@ else:
 **Other Ollama models that work well:**
 
 ```bash
-ollama pull llama3.1:8b       # default, good balance
 ollama pull qwen2.5:7b        # strong at JSON/structured reasoning
+ollama pull llama3.1:8b       # good balance of speed and quality
 ollama pull mistral:7b        # fast, good for structured output
+```
+
+Set a specific model via `OLLAMA_MODEL` env var (overrides auto-detection):
+
+```bash
+export OLLAMA_MODEL="llama3.1:8b"
 ```
 
 **Why temperature=0 for both providers:**
