@@ -342,47 +342,47 @@ Or click **+ New Analysis** in the dashboard at http://localhost:8090.
 The dashboard left panel shows every agent step in real time:
 
 ```
-🚀 Pipeline started                                          14:03:25
-⏳ Triage — Assessing scope and severity                     14:03:26
-🔧 Triage → tool_query_latency_p99(service_b, 60)           14:03:27
-📥 returned: latest_value_ms: 2487 — is_anomalous: true
-🔧 Triage → tool_query_error_rate(service_a, 60)            14:03:29
-📥 returned: latest_percent: 18.3% — is_anomalous: true
-✅ Triage completed [6.4s]                                   14:03:32
+ • Pipeline started                                          14:03:25
+   Triage — Assessing scope and severity                     14:03:26
+   Triage -> tool_query_latency_p99(service_b, 60)          14:03:27
+   <- returned: latest_value_ms: 2487 — is_anomalous: true
+   Triage -> tool_query_error_rate(service_a, 60)           14:03:29
+   <- returned: latest_percent: 18.3% — is_anomalous: true
+ ✓ Triage completed [6.4s]                                   14:03:32
    Severity: SEV1 — Confirmed: service_a, service_b
 
-⏳ Trace Analyzer started                                    14:03:32
-⏳ Log Correlator started                                    14:03:32  ← parallel
-⏳ Metric Reasoner started                                   14:03:32  ← parallel
+   Trace Analyzer started                                    14:03:32
+   Log Correlator started                                    14:03:32  <- parallel
+   Metric Reasoner started                                   14:03:32  <- parallel
 
-🔧 Metric → tool_query_db_connections(service_b, 60)        14:03:34
-📥 returned: latest_active: 23.0 — normal range
-🔧 Metric → tool_query_latency_p99(service_b, 60)           14:03:35
-📥 returned: latest_value_ms: 2487 — 12.4x average
+   Metric -> tool_query_db_connections(service_b, 60)       14:03:34
+   <- returned: latest_active: 23.0 — normal range
+   Metric -> tool_query_latency_p99(service_b, 60)          14:03:35
+   <- returned: latest_value_ms: 2487 — 12.4x average
 
-✅ Log Correlator completed [18.7s]                          14:03:51
+ ✓ Log Correlator completed [18.7s]                          14:03:51
    DeadlineExceeded pattern — service_a logs, first seen 14:03:18
-✅ Metric Reasoner completed [19.2s]                         14:03:51
+ ✓ Metric Reasoner completed [19.2s]                         14:03:51
    p99: 2487ms (12.4x avg) — no resource saturation detected
-✅ Trace Analyzer completed [22.1s]                          14:03:54
-   First error: service_a — Cascade: service_b → service_a
+ ✓ Trace Analyzer completed [22.1s]                          14:03:54
+   First error: service_a — Cascade: service_b -> service_a
 
-⏳ Correlation Agent started                                 14:03:54
-🔧 Correlation → tool_search_similar_incidents               14:03:55
-📥 returned: INC-2024-07-22 similarity: 0.84
-✅ Correlation completed [9.3s]                              14:04:03
-   Step 1: service_b latency → 2487ms at 14:03:15
+   Correlation Agent started                                 14:03:54
+   Correlation -> tool_search_similar_incidents              14:03:55
+   <- returned: INC-2024-07-22 similarity: 0.84
+ ✓ Correlation completed [9.3s]                              14:04:03
+   Step 1: service_b latency -> 2487ms at 14:03:15
    Step 2: service_a DeadlineExceeded at 14:03:22
-   Step 3: service_a error rate → 18.3% at 14:03:28
+   Step 3: service_a error rate -> 18.3% at 14:03:28
 
-✅ Root Cause completed [8.9s]                               14:04:12
+ ✓ Root Cause completed [8.9s]                               14:04:12
    [87% confidence] service_b latency spike (2500ms) caused
    service_a to exhaust request timeout — cascade to users
 
-✅ Postmortem Writer completed [9.1s]                        14:04:21
+ ✓ Postmortem Writer completed [9.1s]                        14:04:21
    4,923 chars — signals: full
 
-🎯 Analysis complete — 56 seconds                           14:04:21
+ * Analysis complete — 56 seconds                            14:04:21
 ```
 
 ### Step 6 — Review the Postmortem
