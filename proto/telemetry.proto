@@ -1,0 +1,92 @@
+syntax = "proto3";
+
+package telemetry;
+
+option go_package = "github.com/sujithm/ghost-debugger/proto/telemetry";
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SHARED TYPES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+message Span {
+  string span_id        = 1;
+  string parent_span_id = 2;
+  string operation_name = 3;
+  string service_name   = 4;
+  int64  start_time_ns  = 5;
+  int64  duration_ns    = 6;
+  bool   is_error       = 7;
+  string error_message  = 8;
+  map<string, string> attributes = 9;
+}
+
+message MetricDataPoint {
+  string metric_name          = 1;
+  double value                = 2;
+  map<string, string> labels  = 3;
+  int64  timestamp_ns         = 4;
+  string metric_type          = 5;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// INGESTION REQUEST MESSAGES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+message TraceIngestionRequest {
+  string         trace_id       = 1;
+  repeated Span  spans          = 2;
+  string         source_service = 3;
+  int64          ingested_at_ns = 4;
+}
+
+message LogIngestionRequest {
+  string log_id       = 1;
+  string service_name = 2;
+  string level        = 3;
+  string message      = 4;
+  string trace_id     = 5;
+  string span_id      = 6;
+  int64  timestamp_ns = 7;
+  map<string, string> fields = 8;
+}
+
+message MetricIngestionRequest {
+  string                   source_service = 1;
+  repeated MetricDataPoint points         = 2;
+  int64                    collected_at_ns = 3;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// INGESTION RESPONSE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+message IngestionResponse {
+  string status       = 1;
+  string ingestion_id = 2;
+  string message      = 3;
+  int64  timestamp_ns = 4;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// INCIDENT NOTIFICATION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+message IncidentNotification {
+  string   incident_id         = 1;
+  string   trigger_type        = 2;
+  string   trigger_description = 3;
+  repeated string services     = 4;
+  int64    detected_at_ns      = 5;
+  double   trigger_value       = 6;
+  double   trigger_threshold   = 7;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SERVICE DEFINITION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+service TelemetryService {
+  rpc IngestTrace  (TraceIngestionRequest)  returns (IngestionResponse);
+  rpc IngestLog    (LogIngestionRequest)    returns (IngestionResponse);
+  rpc IngestMetric (MetricIngestionRequest) returns (IngestionResponse);
+}

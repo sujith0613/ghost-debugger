@@ -1,0 +1,7 @@
+scrape_configs:
+  - job_name: 'gateway'
+    static_configs:
+      - targets: ['gateway:9090']
+  - job_name: 'test_services'
+    static_configs:
+      - targets: ['service_a:8081', 'service_b:8082', 'service_c:8083']

@@ -1,0 +1,7 @@
+{
+  "title": "Ghost Debugger — System Health",
+  "uid": "ghost-debugger-main",
+  "version": 1,
+  "panels": [],
+  "__comment": "TODO Phase 3: Add panels for ingestion rate, error rate, agent latency, incident count"
+}

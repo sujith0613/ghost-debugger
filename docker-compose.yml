@@ -1,0 +1,121 @@
+version: "3.9"
+
+services:
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+      - "4318:4318"
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml
+
+  chromadb:
+    image: chromadb/chroma:latest
+    ports:
+      - "8000:8000"
+    environment:
+      - CHROMA_SERVER_CORS_ALLOW_ORIGINS=["*"]
+
+  gateway:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+    ports:
+      - "9000:9000"
+      - "9090:9090"
+    depends_on:
+      - jaeger
+      - prometheus
+      - chromadb
+    environment:
+      - AGENT_SERVICE_TARGET=agents:9001
+      - JAEGER_ENDPOINT=jaeger:4317
+      - PROMETHEUS_ENDPOINT=http://prometheus:9090
+
+  agents:
+    build:
+      context: .
+      dockerfile: agents/Dockerfile
+    ports:
+      - "9001:9001"
+    depends_on:
+      - chromadb
+    environment:
+      - CHROMA_ENDPOINT=http://chromadb:8000
+
+  service_a:
+    build:
+      context: .
+      dockerfile: test_services/service_a/Dockerfile
+    container_name: ghost-service-a
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      - SERVICE_NAME=service_a
+      - SERVICE_PORT=8081
+      - DOWNSTREAM_SERVICE=http://service_b:8082
+      - JAEGER_ENDPOINT=jaeger:4317
+      - FAILURE_INJECTOR_URL=http://failure_injector:8099
+    depends_on:
+      - jaeger
+    profiles:
+      - services
+
+  service_b:
+    build:
+      context: .
+      dockerfile: test_services/service_b/Dockerfile
+    container_name: ghost-service-b
+    restart: unless-stopped
+    ports:
+      - "8082:8082"
+    environment:
+      - SERVICE_NAME=service_b
+      - SERVICE_PORT=8082
+      - DOWNSTREAM_SERVICE=http://service_c:8083
+      - JAEGER_ENDPOINT=jaeger:4317
+      - FAILURE_INJECTOR_URL=http://failure_injector:8099
+    depends_on:
+      - jaeger
+    profiles:
+      - services
+
+  service_c:
+    build:
+      context: .
+      dockerfile: test_services/service_c/Dockerfile
+    container_name: ghost-service-c
+    restart: unless-stopped
+    ports:
+      - "8083:8083"
+    environment:
+      - SERVICE_NAME=service_c
+      - SERVICE_PORT=8083
+      - JAEGER_ENDPOINT=jaeger:4317
+      - FAILURE_INJECTOR_URL=http://failure_injector:8099
+    depends_on:
+      - jaeger
+    profiles:
+      - services
+
+  failure_injector:
+    build:
+      context: .
+      dockerfile: test_services/failure_injector/Dockerfile
+    container_name: ghost-failure-injector
+    restart: unless-stopped
+    ports:
+      - "8099:8099"
+    environment:
+      - INJECTOR_PORT=8099
+    profiles:
+      - services

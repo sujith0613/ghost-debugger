@@ -1,0 +1,41 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	triage(triage)
+	trace_analyzer(trace_analyzer)
+	log_correlator(log_correlator)
+	metric_reasoner(metric_reasoner)
+	correlation(correlation)
+	root_cause_analysis(root_cause_analysis)
+	postmortem_writer(postmortem_writer)
+	store_postmortem(store_postmortem)
+	parallel_fanout(parallel_fanout)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> triage;
+	correlation --> root_cause_analysis;
+	log_correlator --> correlation;
+	metric_reasoner --> correlation;
+	root_cause_analysis --> postmortem_writer;
+	store_postmortem --> __end__;
+	trace_analyzer --> correlation;
+	triage -. &nbsp;parallel_analysis&nbsp; .-> parallel_fanout;
+	triage -.-> correlation;
+	triage -.-> postmortem_writer;
+	parallel_fanout -.-> triage;
+	parallel_fanout -.-> trace_analyzer;
+	parallel_fanout -.-> log_correlator;
+	parallel_fanout -.-> metric_reasoner;
+	parallel_fanout -.-> correlation;
+	parallel_fanout -.-> root_cause_analysis;
+	parallel_fanout -.-> postmortem_writer;
+	parallel_fanout -.-> store_postmortem;
+	parallel_fanout -.-> __end__;
+	postmortem_writer -.-> store_postmortem;
+	postmortem_writer -. &nbsp;end&nbsp; .-> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc
