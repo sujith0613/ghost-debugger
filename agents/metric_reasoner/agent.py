@@ -106,7 +106,6 @@ Provide structured metric analysis with specific values."""
             "metric_saturated_resource": "",
             "metric_anomaly_details": [],
             "metric_had_error": False,
-            "completed_agents": safe_append(state.get("completed_agents", []), "metric_reasoner"),
             "failed_agents": safe_append(state.get("failed_agents", []), "metric_reasoner"),
             "errors": safe_append(state.get("errors", []), f"[metric_reasoner] {type(e).__name__}: {str(e)[:200]}"),
         }

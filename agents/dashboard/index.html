@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ghost Debugger — Postmortem Dashboard</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface2: #1c2128;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text2: #8b949e;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --red: #f85149;
+    --orange: #d29922;
+    --purple: #bc8cff;
+    --cyan: #39d2c0;
+    --pink: #f778ba;
+    --radius: 8px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* Sidebar */
+  .sidebar {
+    width: 300px;
+    min-width: 300px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+  }
+  .sidebar-header {
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .sidebar-header h1 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--accent);
+  }
+  .sidebar-header p {
+    font-size: 12px;
+    color: var(--text2);
+    margin-top: 2px;
+  }
+  .incident-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+  }
+  .incident-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+  }
+  .incident-card:hover { border-color: var(--accent); }
+  .incident-card.active { border-color: var(--accent); background: #0d1f3c; }
+  .incident-card .id { font-size: 13px; font-weight: 600; }
+  .incident-card .desc { font-size: 12px; color: var(--text2); margin-top: 4px; }
+  .incident-card .meta {
+    font-size: 11px;
+    color: var(--text2);
+    margin-top: 6px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+  .badge-queued { background: #1c2128; color: var(--text2); border: 1px solid var(--border); }
+  .badge-running { background: #0d2b3e; color: var(--accent); border: 1px solid var(--accent); }
+  .badge-completed { background: #0a2e1a; color: var(--green); border: 1px solid var(--green); }
+  .badge-failed { background: #2d0e0e; color: var(--red); border: 1px solid var(--red); }
+
+  /* Main */
+  .main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* Agent Grid */
+  .agent-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .agent-cell {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px;
+    text-align: center;
+    transition: all 0.3s;
+    font-size: 11px;
+  }
+  .agent-cell .icon { font-size: 20px; margin-bottom: 4px; }
+  .agent-cell .name { font-weight: 600; color: var(--text2); }
+  .agent-cell .finding {
+    font-size: 10px;
+    color: var(--text2);
+    margin-top: 4px;
+    display: none;
+    word-break: break-word;
+    max-height: 40px;
+    overflow: hidden;
+  }
+  .agent-cell.idle { opacity: 0.5; }
+  .agent-cell.running { border-color: var(--accent); animation: pulse 1.5s infinite; }
+  .agent-cell.done { border-color: var(--green); }
+  .agent-cell.done .icon { color: var(--green); }
+  .agent-cell.done .finding { display: block; }
+  .agent-cell.failed { border-color: var(--red); }
+  .agent-cell.failed .icon { color: var(--red); }
+  .agent-cell.failed .finding { display: block; color: var(--red); }
+
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(88,166,255,0.3); }
+    50% { box-shadow: 0 0 0 4px rgba(88,166,255,0); }
+  }
+
+  /* Content split */
+  .content-split {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+  }
+
+  /* Timeline */
+  .timeline-panel {
+    width: 50%;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border);
+  }
+  .panel-header {
+    padding: 10px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .timeline-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 16px;
+  }
+  .tl-item {
+    padding: 6px 0;
+    border-bottom: 1px solid #1c2128;
+    font-size: 12px;
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+  }
+  .tl-item .tl-time {
+    color: var(--text2);
+    font-size: 11px;
+    min-width: 60px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    flex-shrink: 0;
+    padding-top: 1px;
+  }
+  .tl-item .tl-content { flex: 1; }
+  .tl-item .tl-agent { color: var(--accent); font-weight: 500; }
+  .tl-item .tl-icon { font-size: 14px; flex-shrink: 0; }
+
+  /* Report */
+  .report-panel {
+    width: 50%;
+    display: flex;
+    flex-direction: column;
+  }
+  .report-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    color: var(--text2);
+  }
+  .report-body h1, .report-body h2, .report-body h3 {
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    margin: 16px 0 8px;
+  }
+  .report-body hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+  .report-empty {
+    color: var(--text2);
+    font-style: italic;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+  }
+
+  /* Empty state */
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--text2);
+  }
+  .empty-state .big-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.3; }
+  .empty-state h2 { font-size: 18px; margin-bottom: 8px; color: var(--text); }
+  .empty-state p { font-size: 13px; }
+
+  /* Form */
+  .analyze-form {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .analyze-form input {
+    flex: 1;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    padding: 6px 10px;
+    font-size: 13px;
+    outline: none;
+  }
+  .analyze-form input:focus { border-color: var(--accent); }
+  .analyze-form button {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius);
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .analyze-form button:hover { background: #79b8ff; }
+  .analyze-form button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* Modal */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    width: 90%;
+    max-width: 800px;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .modal-header h2 { font-size: 16px; }
+  .modal-close {
+    background: none;
+    border: none;
+    color: var(--text2);
+    font-size: 20px;
+    cursor: pointer;
+  }
+  .modal-close:hover { color: var(--text); }
+  .modal-body {
+    padding: 20px;
+    overflow-y: auto;
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+  }
+
+  @media (max-width: 900px) {
+    .sidebar { width: 220px; min-width: 220px; }
+    .agent-grid { grid-template-columns: repeat(3, 1fr); }
+    .content-split { flex-direction: column; }
+    .timeline-panel, .report-panel { width: 100%; height: 50%; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<div class="sidebar">
+  <div class="sidebar-header">
+    <h1>GHOST DEBUGGER</h1>
+    <p>Postmortem Analysis Dashboard</p>
+  </div>
+  <div class="analyze-form">
+    <input type="text" id="descInput" placeholder="What happened? (e.g. '503 errors on checkout')" />
+    <button id="analyzeBtn" onclick="startAnalysis()">Analyze</button>
+  </div>
+  <div class="incident-list" id="incidentList"></div>
+</div>
+
+<!-- Main -->
+<div class="main">
+
+  <!-- Agent Grid -->
+  <div class="agent-grid" id="agentGrid">
+    <div class="agent-cell idle" data-agent="triage">
+      <div class="icon">🔍</div>
+      <div class="name">Triage</div>
+      <div class="finding"></div>
+    </div>
+    <div class="agent-cell idle" data-agent="trace_analyzer">
+      <div class="icon">🔗</div>
+      <div class="name">Trace Analyzer</div>
+      <div class="finding"></div>
+    </div>
+    <div class="agent-cell idle" data-agent="log_correlator">
+      <div class="icon">📋</div>
+      <div class="name">Log Correlator</div>
+      <div class="finding"></div>
+    </div>
+    <div class="agent-cell idle" data-agent="metric_reasoner">
+      <div class="icon">📊</div>
+      <div class="name">Metric Reasoner</div>
+      <div class="finding"></div>
+    </div>
+    <div class="agent-cell idle" data-agent="correlation">
+      <div class="icon">🧩</div>
+      <div class="name">Correlation</div>
+      <div class="finding"></div>
+    </div>
+    <div class="agent-cell idle" data-agent="root_cause_analysis">
+      <div class="icon">🎯</div>
+      <div class="name">Root Cause</div>
+      <div class="finding"></div>
+    </div>
+    <div class="agent-cell idle" data-agent="postmortem_writer">
+      <div class="icon">📝</div>
+      <div class="name">Postmortem</div>
+      <div class="finding"></div>
+    </div>
+    <div class="agent-cell idle" data-agent="store_postmortem">
+      <div class="icon">💾</div>
+      <div class="name">Store</div>
+      <div class="finding"></div>
+    </div>
+  </div>
+
+  <!-- Content Split -->
+  <div class="content-split" id="activeView">
+    <div class="timeline-panel">
+      <div class="panel-header">
+        <span>Timeline</span>
+        <span id="eventCount" style="font-weight:400;color:var(--text2);font-size:12px;">0 events</span>
+      </div>
+      <div class="timeline-list" id="timelineList">
+        <div class="empty-state">
+          <div class="big-icon">👻</div>
+          <h2>No analysis running</h2>
+          <p>Start an analysis to see the live pipeline stream here.</p>
+        </div>
+      </div>
+    </div>
+    <div class="report-panel">
+      <div class="panel-header">
+        <span>Postmortem Report</span>
+        <div style="display:flex;gap:6px;">
+          <button id="fullscreenBtn" onclick="openModal()" style="display:none;background:none;border:1px solid var(--border);color:var(--text2);border-radius:4px;padding:2px 8px;font-size:11px;cursor:pointer;">Full</button>
+          <button id="downloadBtn" onclick="downloadReport()" style="display:none;background:none;border:1px solid var(--border);color:var(--text2);border-radius:4px;padding:2px 8px;font-size:11px;cursor:pointer;">Download</button>
+        </div>
+      </div>
+      <div class="report-body" id="reportBody">
+        <div class="report-empty">Report will appear here once analysis completes.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Postmortem Report</h2>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<script>
+const STORE_URL = '/incidents';
+const SSE_URL = id => `/incidents/${id}/stream`;
+const ANALYZE_URL = '/analyze';
+const REPORT_URL = id => `/incidents/${id}/report`;
+
+let incidents = [];
+let currentId = null;
+let currentSSE = null;
+
+// --- Init ---
+document.addEventListener('DOMContentLoaded', () => {
+  loadIncidents();
+  document.getElementById('descInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') startAnalysis();
+  });
+});
+
+// --- Load incident list ---
+async function loadIncidents() {
+  try {
+    const res = await fetch(STORE_URL);
+    const data = await res.json();
+    incidents = data.incidents || [];
+    renderSidebar();
+  } catch(e) { console.error('load incident list failed', e); }
+}
+
+function renderSidebar() {
+  const list = document.getElementById('incidentList');
+  if (incidents.length === 0) {
+    list.innerHTML = `<div class="empty-state" style="padding:20px">
+      <p style="font-size:12px;">No incidents yet.<br>Start an analysis above.</p>
+    </div>`;
+    return;
+  }
+  list.innerHTML = incidents.map(inc => `
+    <div class="incident-card ${inc.incident_id === currentId ? 'active' : ''}"
+         onclick="selectIncident('${inc.incident_id}')">
+      <div class="id">${escHtml(inc.incident_id)}</div>
+      <div class="desc">${escHtml(trunc(inc.trigger_description, 60))}</div>
+      <div class="meta">
+        <span class="badge badge-${inc.status}">${inc.status}</span>
+        <span>${inc.affected_services.length} svc</span>
+        <span>${fmtTime(inc.created_at)}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+// --- Select incident ---
+function selectIncident(id) {
+  if (id === currentId) return;
+  currentId = id;
+  if (currentSSE) { currentSSE.close(); currentSSE = null; }
+  clearAgentGrid();
+  clearTimeline();
+  clearReport();
+  document.getElementById('eventCount').textContent = '0 events';
+  renderSidebar();
+  loadDetail(id);
+  connectSSE(id);
+}
+
+async function loadDetail(id) {
+  try {
+    const res = await fetch(`${STORE_URL}/${id}`);
+    if (!res.ok) throw new Error('not found');
+    const detail = await res.json();
+    renderDetail(detail);
+  } catch(e) {
+    console.error('load detail failed', e);
+  }
+}
+
+function renderDetail(detail) {
+  // Agent states from completed/failed agents
+  const agents = ['triage','trace_analyzer','log_correlator','metric_reasoner',
+                  'correlation','root_cause_analysis','postmortem_writer','store_postmortem'];
+  const completed = detail.completed_agents || [];
+  const failed = detail.failed_agents || [];
+  agents.forEach(name => {
+    const cell = document.querySelector(`[data-agent="${name}"]`);
+    if (!cell) return;
+    cell.className = 'agent-cell';
+    const finding = cell.querySelector('.finding');
+    if (completed.includes(name)) {
+      cell.classList.add('done');
+      finding.textContent = getFindingText(name, detail);
+    } else if (failed.includes(name)) {
+      cell.classList.add('failed');
+      finding.textContent = 'Failed';
+    } else {
+      cell.classList.add('idle');
+      finding.textContent = '';
+    }
+  });
+  // Timeline
+  if (detail.timeline && detail.timeline.length > 0) {
+    const list = document.getElementById('timelineList');
+    list.innerHTML = detail.timeline.map(t => renderTimelineItem(t)).join('');
+    document.getElementById('eventCount').textContent = `${detail.timeline.length} events`;
+  }
+  // Report
+  if (detail.postmortem_report) {
+    renderReport(detail.postmortem_report);
+    document.getElementById('fullscreenBtn').style.display = 'inline';
+    document.getElementById('downloadBtn').style.display = 'inline';
+  }
+}
+
+function getFindingText(name, detail) {
+  const map = {
+    triage: () => `Severity: ${detail.triage_severity || 'UNKNOWN'}`,
+    trace_analyzer: () => detail.trace_first_error_service ? `First error: ${detail.trace_first_error_service}` : 'No errors',
+    log_correlator: () => detail.log_error_patterns?.[0] ? `Pattern: ${trunc(detail.log_error_patterns[0], 40)}` : 'No patterns',
+    metric_reasoner: () => detail.metric_saturated_resource ? `Saturated: ${detail.metric_saturated_resource}` : 'No anomalies',
+    correlation: () => detail.causal_chain?.[0] ? trunc(detail.causal_chain[0], 50) : 'No chain',
+    root_cause_analysis: () => `[${((detail.root_cause_confidence||0)*100).toFixed(0)}%] ${trunc(detail.root_cause||'', 40)}`,
+    postmortem_writer: () => `${(detail.postmortem_report||'').length} chars`,
+    store_postmortem: () => 'Stored',
+  };
+  return map[name] ? map[name]() : 'Done';
+}
+
+// --- SSE ---
+function connectSSE(id) {
+  if (currentSSE) currentSSE.close();
+  const url = SSE_URL(id);
+  const es = new EventSource(url);
+  currentSSE = es;
+
+  es.addEventListener('pipeline_started', e => handleEvent(JSON.parse(e.data)));
+  es.addEventListener('agent_started', e => handleEvent(JSON.parse(e.data)));
+  es.addEventListener('tool_called', e => handleEvent(JSON.parse(e.data)));
+  es.addEventListener('tool_result', e => handleEvent(JSON.parse(e.data)));
+  es.addEventListener('agent_completed', e => handleEvent(JSON.parse(e.data)));
+  es.addEventListener('agent_failed', e => handleEvent(JSON.parse(e.data)));
+  es.addEventListener('pipeline_complete', e => handleEvent(JSON.parse(e.data)));
+  es.addEventListener('pipeline_failed', e => handleEvent(JSON.parse(e.data)));
+
+  es.onerror = () => {
+    // reconnect handled by EventSource automatically
+  };
+}
+
+function handleEvent(payload) {
+  const type = payload.type;
+  const ts = payload.timestamp;
+
+  removeEmptyState();
+
+  // Add to timeline
+  const list = document.getElementById('timelineList');
+  const tlItem = document.createElement('div');
+  tlItem.className = 'tl-item';
+
+  const iconSpan = document.createElement('span');
+  iconSpan.className = 'tl-icon';
+  iconSpan.textContent = tlIcon(type);
+  tlItem.appendChild(iconSpan);
+
+  const timeSpan = document.createElement('span');
+  timeSpan.className = 'tl-time';
+  timeSpan.textContent = fmtTime(ts);
+  tlItem.appendChild(timeSpan);
+
+  const contentSpan = document.createElement('div');
+  contentSpan.className = 'tl-content';
+  contentSpan.innerHTML = tlContent(payload);
+  tlItem.appendChild(contentSpan);
+
+  list.appendChild(tlItem);
+  list.scrollTop = list.scrollHeight;
+
+  // Update event count
+  const countEl = document.getElementById('eventCount');
+  const current = parseInt(countEl.textContent) || 0;
+  countEl.textContent = `${current + 1} events`;
+
+  // Update agent grid
+  if (type === 'agent_started') {
+    setAgentState(payload.agent_name, 'running');
+  } else if (type === 'agent_completed') {
+    setAgentState(payload.agent_name, 'done', payload.key_finding);
+  } else if (type === 'agent_failed') {
+    setAgentState(payload.agent_name, 'failed', payload.error);
+  } else if (type === 'pipeline_complete') {
+    setTimeout(() => loadDetail(currentId), 500);
+  } else if (type === 'pipeline_failed') {
+    // will be reloaded
+  }
+
+  // Auto-select first incident if none selected
+  if (!currentId && payload.incident_id) {
+    selectIncident(payload.incident_id);
+  }
+}
+
+function tlIcon(type) {
+  const icons = {
+    pipeline_started: '🔄',
+    agent_started: '▶',
+    tool_called: '⚙',
+    tool_result: '✓',
+    agent_completed: '✅',
+    agent_failed: '❌',
+    pipeline_complete: '🏁',
+    pipeline_failed: '💥',
+  };
+  return icons[type] || '•';
+}
+
+function tlContent(payload) {
+  switch(payload.type) {
+    case 'pipeline_started':
+      return 'Ghost Debugger analysis <strong>started</strong>';
+    case 'agent_started':
+      return `<span class="tl-agent">${escHtml(payload.agent_name)}</span> — ${escHtml(payload.description || '')}`;
+    case 'tool_called':
+      return `<span class="tl-agent">${escHtml(payload.agent_name)}</span> called <code>${escHtml(payload.tool_name)}</code>`;
+    case 'tool_result':
+      return `<span class="tl-agent">${escHtml(payload.agent_name)}</span> — ${escHtml(trunc(payload.result_preview, 60))}`;
+    case 'agent_completed': {
+      let text = `<span class="tl-agent">${escHtml(payload.agent_name)}</span> completed`;
+      if (payload.key_finding) text += ` — ${escHtml(payload.key_finding)}`;
+      if (payload.duration_ms > 0) text += ` <span style="color:var(--text2)">(${fmtDuration(payload.duration_ms)})</span>`;
+      return text;
+    }
+    case 'agent_failed':
+      return `<span class="tl-agent">${escHtml(payload.agent_name)}</span> <span style="color:var(--red)">failed</span> — ${escHtml(payload.error || '')}`;
+    case 'pipeline_complete': {
+      let s = `Analysis complete — <strong>${escHtml(payload.severity || 'UNKNOWN')}</strong>`;
+      if (payload.root_cause) s += ` — Root cause: ${escHtml(payload.root_cause)}`;
+      if (payload.confidence > 0) s += ` [${(payload.confidence * 100).toFixed(0)}% confidence]`;
+      return s;
+    }
+    case 'pipeline_failed':
+      return `<span style="color:var(--red)">Pipeline failed</span> — ${escHtml(payload.error || '')}`;
+    default:
+      return escHtml(payload.message || '');
+  }
+}
+
+function setAgentState(name, state, finding) {
+  const cell = document.querySelector(`[data-agent="${name}"]`);
+  if (!cell) return;
+  cell.className = 'agent-cell';
+  cell.classList.add(state);
+  if (finding !== undefined) {
+    const el = cell.querySelector('.finding');
+    if (el) el.textContent = trunc(finding, 60);
+  }
+}
+
+function clearAgentGrid() {
+  document.querySelectorAll('.agent-cell').forEach(cell => {
+    cell.className = 'agent-cell idle';
+    cell.querySelector('.finding').textContent = '';
+  });
+}
+
+function clearTimeline() {
+  const list = document.getElementById('timelineList');
+  list.innerHTML = `<div class="empty-state" style="padding:20px">
+    <p style="font-size:12px;">Waiting for pipeline events...</p>
+  </div>`;
+  document.getElementById('eventCount').textContent = '0 events';
+}
+
+function clearReport() {
+  document.getElementById('reportBody').innerHTML = `<div class="report-empty">Report will appear here once analysis completes.</div>`;
+  document.getElementById('fullscreenBtn').style.display = 'none';
+  document.getElementById('downloadBtn').style.display = 'none';
+}
+
+function removeEmptyState() {
+  const list = document.getElementById('timelineList');
+  const empty = list.querySelector('.empty-state');
+  if (empty) list.innerHTML = '';
+}
+
+function renderReport(md) {
+  const el = document.getElementById('reportBody');
+  el.innerHTML = simpleMarkdown(md);
+}
+
+function renderTimelineItem(t) {
+  let icon = tlIcon(t.type);
+  let content = tlContent(t);
+  return `<div class="tl-item">
+    <span class="tl-icon">${icon}</span>
+    <span class="tl-time">${fmtTime(t.timestamp)}</span>
+    <div class="tl-content">${content}</div>
+  </div>`;
+}
+
+// --- Simple markdown renderer ---
+function simpleMarkdown(text) {
+  if (!text) return '<div class="report-empty">No report content.</div>';
+  let html = escHtml(text);
+  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+  html = html.replace(/^---$/gm, '<hr>');
+  html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
+  html = html.replace(/(<li>.*<\/li>\n?)+/g, m => `<ul>${m}</ul>`);
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  html = html.replace(/`(.+?)`/g, '<code style="background:var(--surface2);padding:1px 4px;border-radius:3px;">$1</code>');
+  html = html.replace(/\n\n/g, '<br><br>');
+  return html;
+}
+
+// --- Start analysis ---
+async function startAnalysis() {
+  const desc = document.getElementById('descInput').value.trim();
+  if (!desc) return;
+
+  const btn = document.getElementById('analyzeBtn');
+  btn.disabled = true;
+  btn.textContent = 'Starting...';
+
+  try {
+    const res = await fetch(ANALYZE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        trigger_type: 'manual',
+        trigger_description: desc,
+        affected_services: ['unknown'],
+        analysis_window_seconds: 600,
+      }),
+    });
+    if (!res.ok) throw new Error('API error');
+    const data = await res.json();
+
+    document.getElementById('descInput').value = '';
+
+    // Poll for the new incident
+    setTimeout(() => loadIncidents(), 500);
+    setTimeout(() => selectIncident(data.incident_id), 700);
+
+  } catch(e) {
+    console.error('analyze failed', e);
+    alert('Failed to start analysis. Check the server logs.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Analyze';
+  }
+}
+
+// --- Modal ---
+function openModal() {
+  const body = document.getElementById('reportBody');
+  document.getElementById('modalBody').innerHTML = body.innerHTML;
+  document.getElementById('modalOverlay').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('open');
+}
+
+// --- Download ---
+async function downloadReport() {
+  if (!currentId) return;
+  window.open(REPORT_URL(currentId), '_blank');
+}
+
+// --- Helpers ---
+function escHtml(s) {
+  if (typeof s !== 'string') return String(s || '');
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function trunc(s, n) {
+  if (!s || typeof s !== 'string') return '';
+  if (s.length <= n) return s;
+  return s.slice(0, n) + '…';
+}
+
+function fmtTime(iso) {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  } catch(e) { return iso; }
+}
+
+function fmtDuration(ms) {
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+</script>
+</body>
+</html>

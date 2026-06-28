@@ -15,8 +15,14 @@ import (
 	telemetrypb "github.com/sujithm/ghost-debugger/proto/telemetry"
 	"github.com/sujithm/ghost-debugger/gateway/circuitbreaker"
 	"github.com/sujithm/ghost-debugger/gateway/incident"
+	"github.com/sujithm/ghost-debugger/gateway/metrics"
 	"github.com/sujithm/ghost-debugger/gateway/ratelimiter"
 	"github.com/sujithm/ghost-debugger/gateway/router"
+	"github.com/sujithm/ghost-debugger/gateway/telemetry"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/otel/attribute"
+	otelcodes "go.opentelemetry.io/otel/codes"
+	oteltrace "go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -41,27 +47,51 @@ func NewGatewayServer() *GatewayServer {
 }
 
 func (s *GatewayServer) IngestTrace(ctx context.Context, req *telemetrypb.TraceIngestionRequest) (*telemetrypb.IngestionResponse, error) {
-	if !s.ratelimiter.Allow(req.SourceService) {
+	start := time.Now()
+	service := req.SourceService
+
+	tracer := telemetry.Tracer("server")
+	ctx, span := tracer.Start(ctx, "gateway.ingest_trace",
+		oteltrace.WithAttributes(
+			attribute.String("source_service", service),
+			attribute.String("trace_id", req.TraceId),
+			attribute.Int("span_count", len(req.Spans)),
+		),
+	)
+	defer span.End()
+
+	if !s.ratelimiter.Allow(service) {
+		metrics.RecordIngestion(service, "trace", "rate_limited", time.Since(start))
+		metrics.RecordRateLimit(service, "trace")
+		span.SetAttributes(attribute.String("rate_limit.status", "rejected"))
+		span.SetStatus(otelcodes.Error, "rate limited")
+		slog.Warn("trace ingestion rate limited", "service", service)
 		return nil, status.Errorf(codes.ResourceExhausted,
-			"rate limit exceeded for service: %s", req.SourceService)
+			"rate limit exceeded for service: %s", service)
 	}
 
 	id := fmt.Sprintf("trace-%s-%d", req.TraceId, time.Now().UnixNano())
+	span.SetAttributes(attribute.String("ingestion_id", id))
 
-	for _, span := range req.Spans {
-		if span.IsError {
-			s.detector.RecordError(span.ServiceName)
+	for _, sp := range req.Spans {
+		if sp.IsError {
+			s.detector.RecordError(sp.ServiceName)
 		}
 	}
 
-	if inc, detected := s.detector.Check(req.SourceService); detected {
+	if inc, detected := s.detector.Check(service); detected {
 		slog.Warn("incident detected",
 			"incident_id", inc.ID,
 			"service", inc.Description,
 			"severity", inc.Severity,
 		)
+		metrics.RecordIncidentDetected(inc.TriggerType)
 		s.maybeTriggerAnalysis(inc)
 	}
+
+	metrics.RecordIngestion(service, "trace", "accepted", time.Since(start))
+	metrics.UpdateActiveServices(s.ratelimiter.ActiveServices())
+	span.SetStatus(otelcodes.Ok, "accepted")
 
 	return &telemetrypb.IngestionResponse{
 		Status:       "ok",
@@ -71,24 +101,48 @@ func (s *GatewayServer) IngestTrace(ctx context.Context, req *telemetrypb.TraceI
 }
 
 func (s *GatewayServer) IngestLog(ctx context.Context, req *telemetrypb.LogIngestionRequest) (*telemetrypb.IngestionResponse, error) {
-	if !s.ratelimiter.Allow(req.ServiceName) {
+	start := time.Now()
+	service := req.ServiceName
+
+	tracer := telemetry.Tracer("server")
+	ctx, span := tracer.Start(ctx, "gateway.ingest_log",
+		oteltrace.WithAttributes(
+			attribute.String("source_service", service),
+			attribute.String("log_id", req.LogId),
+			attribute.String("level", req.Level),
+		),
+	)
+	defer span.End()
+
+	if !s.ratelimiter.Allow(service) {
+		metrics.RecordIngestion(service, "log", "rate_limited", time.Since(start))
+		metrics.RecordRateLimit(service, "log")
+		span.SetAttributes(attribute.String("rate_limit.status", "rejected"))
+		span.SetStatus(otelcodes.Error, "rate limited")
+		slog.Warn("log ingestion rate limited", "service", service)
 		return nil, status.Errorf(codes.ResourceExhausted,
-			"rate limit exceeded for service: %s", req.ServiceName)
+			"rate limit exceeded for service: %s", service)
 	}
 
 	id := fmt.Sprintf("log-%d", time.Now().UnixNano())
+	span.SetAttributes(attribute.String("ingestion_id", id))
 
 	if req.Level == "ERROR" || req.Level == "FATAL" {
-		s.detector.RecordError(req.ServiceName)
+		s.detector.RecordError(service)
 	}
 
-	if inc, detected := s.detector.Check(req.ServiceName); detected {
+	if inc, detected := s.detector.Check(service); detected {
 		slog.Warn("incident detected via logs",
 			"incident_id", inc.ID,
 			"service", inc.Description,
 		)
+		metrics.RecordIncidentDetected(inc.TriggerType)
 		s.maybeTriggerAnalysis(inc)
 	}
+
+	metrics.RecordIngestion(service, "log", "accepted", time.Since(start))
+	metrics.UpdateActiveServices(s.ratelimiter.ActiveServices())
+	span.SetStatus(otelcodes.Ok, "accepted")
 
 	return &telemetrypb.IngestionResponse{
 		Status:      "ok",
@@ -98,12 +152,34 @@ func (s *GatewayServer) IngestLog(ctx context.Context, req *telemetrypb.LogInges
 }
 
 func (s *GatewayServer) IngestMetric(ctx context.Context, req *telemetrypb.MetricIngestionRequest) (*telemetrypb.IngestionResponse, error) {
-	if !s.ratelimiter.Allow(req.SourceService) {
+	start := time.Now()
+	service := req.SourceService
+
+	tracer := telemetry.Tracer("server")
+	ctx, span := tracer.Start(ctx, "gateway.ingest_metric",
+		oteltrace.WithAttributes(
+			attribute.String("source_service", service),
+			attribute.Int("point_count", len(req.Points)),
+		),
+	)
+	defer span.End()
+
+	if !s.ratelimiter.Allow(service) {
+		metrics.RecordIngestion(service, "metric", "rate_limited", time.Since(start))
+		metrics.RecordRateLimit(service, "metric")
+		span.SetAttributes(attribute.String("rate_limit.status", "rejected"))
+		span.SetStatus(otelcodes.Error, "rate limited")
+		slog.Warn("metric ingestion rate limited", "service", service)
 		return nil, status.Errorf(codes.ResourceExhausted,
-			"rate limit exceeded for service: %s", req.SourceService)
+			"rate limit exceeded for service: %s", service)
 	}
 
 	id := fmt.Sprintf("metric-%d", time.Now().UnixNano())
+	span.SetAttributes(attribute.String("ingestion_id", id))
+
+	metrics.RecordIngestion(service, "metric", "accepted", time.Since(start))
+	metrics.UpdateActiveServices(s.ratelimiter.ActiveServices())
+	span.SetStatus(otelcodes.Ok, "accepted")
 
 	return &telemetrypb.IngestionResponse{
 		Status:      "ok",
@@ -114,12 +190,27 @@ func (s *GatewayServer) IngestMetric(ctx context.Context, req *telemetrypb.Metri
 
 func (s *GatewayServer) maybeTriggerAnalysis(inc *incident.Incident) {
 	if !s.circuitbreaker.Allow() {
+		metrics.RecordCircuitBreakerBlock()
 		slog.Warn("circuit breaker open, skipping agent invocation",
 			"incident_id", inc.ID)
 		return
 	}
 
+	metrics.RecordIncidentDispatched()
+
 	go func() {
+		tracer := telemetry.Tracer("incident")
+		_, span := tracer.Start(context.Background(), "gateway.trigger_analysis",
+			oteltrace.WithAttributes(
+				attribute.String("incident_id", inc.ID),
+				attribute.String("trigger_type", inc.TriggerType),
+				attribute.StringSlice("services", inc.Services),
+				attribute.Int64("detected_at_ns", inc.DetectedAt.UnixNano()),
+			),
+		)
+
+		analysisStart := time.Now()
+
 		resp, err := s.agentRouter.Analyze(context.Background(), &agentpb.AnalysisRequest{
 			IncidentId:         inc.ID,
 			TriggerType:        inc.TriggerType,
@@ -130,10 +221,23 @@ func (s *GatewayServer) maybeTriggerAnalysis(inc *incident.Incident) {
 		})
 		if err != nil {
 			s.circuitbreaker.Failure()
+			duration := time.Since(analysisStart)
+			metrics.RecordIncidentComplete(false, duration)
+			span.SetAttributes(attribute.String("error", err.Error()))
+			span.SetStatus(otelcodes.Error, "analysis failed")
+			span.End()
 			slog.Error("agent analysis failed", "incident_id", inc.ID, "error", err)
 			return
 		}
 		s.circuitbreaker.Success()
+		duration := time.Since(analysisStart)
+		metrics.RecordIncidentComplete(true, duration)
+		span.SetAttributes(
+			attribute.String("root_cause", resp.RootCause),
+			attribute.Int64("duration_ms", resp.AnalysisDurationMs),
+		)
+		span.SetStatus(otelcodes.Ok, "completed")
+		span.End()
 		slog.Info("agent analysis complete",
 			"incident_id", inc.ID,
 			"root_cause", resp.RootCause,
@@ -149,17 +253,27 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func metricsHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
-	fmt.Fprint(w, `# HELP ghost_debugger_ingestion_total Total telemetry ingestion count
-# TYPE ghost_debugger_ingestion_total counter
-ghost_debugger_ingestion_total 0
-`)
+	promhttp.Handler().ServeHTTP(w, r)
 }
 
 func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	})))
+
+	ctx := context.Background()
+	otelShutdown, err := telemetry.Init(ctx, slog.Default())
+	if err != nil {
+		slog.Error("failed to initialize OpenTelemetry", "error", err)
+		os.Exit(1)
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		if err := otelShutdown(shutdownCtx); err != nil {
+			slog.Error("failed to shutdown OTel", "error", err)
+		}
+	}()
 
 	server := NewGatewayServer()
 	if err := server.agentRouter.Connect(); err != nil {
@@ -179,17 +293,27 @@ func main() {
 	grpcServer := grpc.NewServer(
 		grpc.UnaryInterceptor(func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 			start := time.Now()
+			tracer := telemetry.Tracer("grpc")
+			ctx, span := tracer.Start(ctx, "gateway.grpc."+info.FullMethod,
+				oteltrace.WithAttributes(
+					attribute.String("rpc.method", info.FullMethod),
+				),
+			)
+			defer span.End()
+
 			resp, err := handler(ctx, req)
 			duration := time.Since(start)
-			// Simulated metric — in production, use OpenTelemetry SDK
-			_ = duration
+
 			if err != nil {
+				span.SetAttributes(attribute.String("error", err.Error()))
+				span.SetStatus(otelcodes.Error, err.Error())
 				slog.Error("grpc request failed",
 					"method", info.FullMethod,
 					"duration_ms", duration.Milliseconds(),
 					"error", err,
 				)
 			} else {
+				span.SetStatus(otelcodes.Ok, "ok")
 				slog.Debug("grpc request completed",
 					"method", info.FullMethod,
 					"duration_ms", duration.Milliseconds(),

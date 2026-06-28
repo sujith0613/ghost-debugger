@@ -101,7 +101,6 @@ Assign a confidence score and list contributing factors."""
             "root_cause": fallback_rc,
             "root_cause_confidence": 0.3,
             "contributing_factors": ["Root cause analysis incomplete due to error"],
-            "completed_agents": safe_append(state.get("completed_agents", []), "root_cause"),
             "failed_agents": safe_append(state.get("failed_agents", []), "root_cause"),
             "errors": safe_append(state.get("errors", []), f"[root_cause] {type(e).__name__}: {str(e)[:200]}"),
         }

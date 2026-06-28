@@ -1,0 +1,120 @@
+groups:
+  - name: ghost_debugger_gateway
+    interval: 30s
+    rules:
+
+      - alert: GhostDebuggerCircuitBreakerOpen
+        expr: ghost_debugger_gateway_circuit_breaker_state == 1
+        for: 60s
+        labels:
+          severity: critical
+          component: gateway
+        annotations:
+          summary: "Ghost Debugger circuit breaker is OPEN"
+          description: >
+            The circuit breaker has been OPEN for {{ $value | humanizeDuration }}.
+            The agent service is unreachable. Incidents are being detected but
+            not analyzed. Check agent service logs and Gemini API availability.
+          action: >
+            1. Check: docker compose logs agents
+            2. Check: Gemini API status at https://status.cloud.google.com
+            3. Check: docker compose ps - are all containers running?
+
+      - alert: GhostDebuggerTelemetryDropped
+        expr: increase(ghost_debugger_gateway_worker_pool_dropped_total[5m]) > 0
+        for: 0s
+        labels:
+          severity: critical
+          component: gateway
+        annotations:
+          summary: "Ghost Debugger is dropping telemetry"
+          description: >
+            {{ $value }} telemetry events were dropped in the last 5 minutes
+            because the worker pool queue was full. This means incident detection
+            data is being lost. Investigate worker pool capacity.
+          action: >
+            1. Check worker_pool_queue_depth metric - how deep is the queue?
+            2. Increase WORKER_COUNT in gateway configuration
+            3. Check if Jaeger is slow (causing workers to back up)
+
+      - alert: GhostDebuggerIngestionRateLimiting
+        expr: >
+          sum(rate(ghost_debugger_gateway_rate_limited_total[5m])) by (service) > 10
+        for: 2m
+        labels:
+          severity: warning
+          component: gateway
+        annotations:
+          summary: "Service {{ $labels.service }} is being heavily rate limited"
+          description: >
+            {{ $labels.service }} is generating {{ $value | humanize }} rate-limited
+            telemetry requests per second. This may indicate a telemetry bug in
+            that service or a legitimate high-traffic event.
+
+  - name: ghost_debugger_agents
+    interval: 30s
+    rules:
+
+      - alert: GhostDebuggerPipelineSlow
+        expr: >
+          histogram_quantile(0.99,
+            rate(ghost_debugger_incident_analysis_duration_seconds_bucket[15m])
+          ) > 120
+        for: 5m
+        labels:
+          severity: warning
+          component: agents
+        annotations:
+          summary: "Ghost Debugger analysis pipeline is slow (p99 > 120s)"
+          description: >
+            The p99 end-to-end analysis duration is {{ $value | humanize }}s.
+            Target is < 90s. Check which agent is the bottleneck using the
+            agent_node_duration_seconds metric.
+
+      - alert: GhostDebuggerAgentHighFailureRate
+        expr: >
+          sum(rate(ghost_debugger_agent_node_total{status="failed"}[10m])) by (agent_name)
+          /
+          sum(rate(ghost_debugger_agent_node_total[10m])) by (agent_name)
+          > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: agents
+        annotations:
+          summary: "Agent {{ $labels.agent_name }} failure rate > 10%"
+          description: >
+            The {{ $labels.agent_name }} agent is failing {{ $value | humanizePercentage }}
+            of the time. Check the agent logs for QueryError or LLM API errors.
+
+      - alert: GhostDebuggerLLMSlow
+        expr: >
+          histogram_quantile(0.99,
+            rate(ghost_debugger_llm_call_duration_seconds_bucket[10m])
+          ) > 20
+        for: 3m
+        labels:
+          severity: warning
+          component: agents
+        annotations:
+          summary: "Gemini API p99 latency > 20s"
+          description: >
+            Gemini API calls are taking {{ $value | humanize }}s at p99.
+            Check Gemini API status page.
+
+      - alert: GhostDebuggerHighPartialSignalRate
+        expr: >
+          sum(increase(ghost_debugger_signal_completeness_total{completeness="partial"}[1h]))
+          /
+          sum(increase(ghost_debugger_signal_completeness_total[1h]))
+          > 0.3
+        for: 10m
+        labels:
+          severity: warning
+          component: agents
+        annotations:
+          summary: "Ghost Debugger has high partial signal rate (>30%)"
+          description: >
+            {{ $value | humanizePercentage }} of analyses in the last hour had
+            partial signals (Jaeger, Prometheus, or ChromaDB unavailable).
+            Check storage backend health.

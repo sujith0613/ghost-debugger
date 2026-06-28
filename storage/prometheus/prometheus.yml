@@ -9,12 +9,21 @@ global:
     environment: 'development'
     project: 'ghost-debugger'
 
+rule_files:
+  - "alert_rules.yml"
+
 scrape_configs:
-  - job_name: 'gateway'
+  - job_name: 'ghost_debugger_gateway'
     static_configs:
-      - targets: ['gateway:8080']
+      - targets: ['gateway:9090']
     metrics_path: '/metrics'
     scrape_interval: 10s
+
+  - job_name: 'ghost_debugger_agents'
+    static_configs:
+      - targets: ['agents:9001']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
 
   - job_name: 'test_services'
     static_configs:
@@ -27,12 +36,7 @@ scrape_configs:
 
   - job_name: 'failure_injector'
     static_configs:
-      - targets: ['failure_injector:8084']
-    metrics_path: '/metrics'
-
-  - job_name: 'agent_service'
-    static_configs:
-      - targets: ['agents:8090']
+      - targets: ['failure_injector:8099']
     metrics_path: '/metrics'
 
   - job_name: 'prometheus'

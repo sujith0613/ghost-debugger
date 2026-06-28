@@ -107,7 +107,6 @@ Provide your structured triage assessment."""
             "triage_severity": "UNKNOWN",
             "triage_time_window": "",
             "triage_confirmed_services": list(suspected_services),
-            "completed_agents": safe_append(state.get("completed_agents", []), "triage"),
             "failed_agents": safe_append(state.get("failed_agents", []), "triage"),
             "errors": safe_append(state.get("errors", []), f"[triage] {type(e).__name__}: {str(e)[:200]}"),
         }

@@ -109,3 +109,9 @@ func (l *PerServiceLimiter) Allow(service string) bool {
 func (l *PerServiceLimiter) Available(service string) int {
 	return l.getBucket(service).Available()
 }
+
+func (l *PerServiceLimiter) ActiveServices() int {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	return len(l.buckets)
+}

@@ -93,7 +93,6 @@ Identify the specific failure mechanism from the log messages."""
             "log_error_patterns": [],
             "log_first_error_time": "",
             "log_had_error": False,
-            "completed_agents": safe_append(state.get("completed_agents", []), "log_correlator"),
             "failed_agents": safe_append(state.get("failed_agents", []), "log_correlator"),
             "errors": safe_append(state.get("errors", []), f"[log_correlator] {type(e).__name__}: {str(e)[:200]}"),
         }

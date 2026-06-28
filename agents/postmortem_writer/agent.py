@@ -167,7 +167,6 @@ Current time: {now}"""
         return {
             "postmortem_report": fallback_report,
             "signal_completeness": signal_completeness,
-            "completed_agents": safe_append(state.get("completed_agents", []), "postmortem_writer"),
             "failed_agents": safe_append(state.get("failed_agents", []), "postmortem_writer"),
             "errors": safe_append(state.get("errors", []), f"[postmortem_writer] {type(e).__name__}: {str(e)[:200]}"),
         }

@@ -121,7 +121,6 @@ Write your correlation summary."""
             "correlation_summary": f"Correlation analysis failed: {str(e)[:200]}",
             "causal_chain": [],
             "similar_incidents": [],
-            "completed_agents": safe_append(state.get("completed_agents", []), "correlation"),
             "failed_agents": safe_append(state.get("failed_agents", []), "correlation"),
             "errors": safe_append(state.get("errors", []), f"[correlation] {type(e).__name__}: {str(e)[:200]}"),
         }

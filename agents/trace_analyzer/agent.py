@@ -105,7 +105,6 @@ Provide structured trace analysis."""
             "trace_first_error_time": "",
             "trace_cascade_path": [],
             "trace_had_error": False,
-            "completed_agents": safe_append(state.get("completed_agents", []), "trace_analyzer"),
             "failed_agents": safe_append(state.get("failed_agents", []), "trace_analyzer"),
             "errors": safe_append(state.get("errors", []), f"[trace_analyzer] {type(e).__name__}: {str(e)[:200]}"),
         }

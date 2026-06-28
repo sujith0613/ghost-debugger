@@ -1,7 +1,461 @@
 {
-  "title": "Ghost Debugger — System Health",
-  "uid": "ghost-debugger-main",
+  "title": "Ghost Debugger — System Observability",
+  "uid": "ghost-debugger-v1",
   "version": 1,
-  "panels": [],
-  "__comment": "TODO Phase 3: Add panels for ingestion rate, error rate, agent latency, incident count"
+  "schemaVersion": 38,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "tags": ["ghost-debugger", "observability"],
+  "panels": [
+    {
+      "id": 1,
+      "title": "ROW: Gateway Health",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "id": 2,
+      "title": "Telemetry Ingestion Rate (req/s)",
+      "description": "Requests per second accepted by the gateway, by signal type.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 1 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(ghost_debugger_gateway_ingestion_total{status=\"accepted\"}[1m])) by (signal_type)",
+          "legendFormat": "{{signal_type}} accepted"
+        },
+        {
+          "expr": "sum(rate(ghost_debugger_gateway_ingestion_total{status=\"rate_limited\"}[1m])) by (service)",
+          "legendFormat": "{{service}} rate-limited"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "yellow", "value": 1000 },
+              { "color": "red", "value": 5000 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Ingestion Latency p99 (ms)",
+      "description": "p99 latency for telemetry ingestion RPCs. Should be < 1ms.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 1 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(ghost_debugger_gateway_ingestion_duration_seconds_bucket[5m])) by (signal_type, le)) * 1000",
+          "legendFormat": "p99 {{signal_type}}"
+        },
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(ghost_debugger_gateway_ingestion_duration_seconds_bucket[5m])) by (signal_type, le)) * 1000",
+          "legendFormat": "p50 {{signal_type}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "yellow", "value": 5 },
+              { "color": "red", "value": 10 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Circuit Breaker State",
+      "description": "0=CLOSED (normal), 1=OPEN (failing), 2=HALF-OPEN (recovering).",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "ghost_debugger_gateway_circuit_breaker_state",
+          "legendFormat": "State"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "0": { "text": "CLOSED", "color": "green" } }, "type": "value" },
+            { "options": { "1": { "text": "OPEN", "color": "red" } }, "type": "value" },
+            { "options": { "2": { "text": "HALF-OPEN", "color": "yellow" } }, "type": "value" }
+          ],
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "yellow", "value": 2 },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Active Services",
+      "description": "Services currently sending telemetry. Sudden drop = service crashed.",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "ghost_debugger_gateway_active_services",
+          "legendFormat": "Services"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": 0 },
+              { "color": "yellow", "value": 1 },
+              { "color": "green", "value": 3 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Worker Pool Queue Depth",
+      "description": "Jobs waiting for storage workers. Should be near 0.",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 5 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "ghost_debugger_gateway_worker_pool_queue_depth",
+          "legendFormat": "Queue"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "yellow", "value": 1000 },
+              { "color": "red", "value": 5000 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 7,
+      "title": "Dropped Jobs Total",
+      "description": "Jobs dropped because worker queue was full. Any non-zero = telemetry loss.",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 5 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "ghost_debugger_gateway_worker_pool_dropped_total",
+          "legendFormat": "Dropped"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 10,
+      "title": "ROW: Agent Pipeline Performance",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 }
+    },
+    {
+      "id": 11,
+      "title": "Agent Node Duration p99 (seconds)",
+      "description": "p99 execution time per agent node. Identifies pipeline bottlenecks.",
+      "type": "bargauge",
+      "gridPos": { "h": 8, "w": 10, "x": 0, "y": 10 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(ghost_debugger_agent_node_duration_seconds_bucket[15m])) by (agent_name, le))",
+          "legendFormat": "{{agent_name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "yellow", "value": 20 },
+              { "color": "red", "value": 45 }
+            ]
+          },
+          "min": 0,
+          "max": 60
+        }
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient"
+      }
+    },
+    {
+      "id": 12,
+      "title": "Agent Success vs Failure Rate",
+      "description": "Success and failure counts per agent.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 14, "x": 10, "y": 10 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(ghost_debugger_agent_node_total{status=\"success\"}[5m])) by (agent_name)",
+          "legendFormat": "success {{agent_name}}"
+        },
+        {
+          "expr": "sum(rate(ghost_debugger_agent_node_total{status=\"failed\"}[5m])) by (agent_name)",
+          "legendFormat": "FAILED {{agent_name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps" },
+        "overrides": [
+          {
+            "matcher": { "id": "nameContains", "options": "FAILED" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 13,
+      "title": "LLM Call Duration p50 / p99 (seconds)",
+      "description": "Gemini API call latency per agent. p99 > 20s = Gemini degraded.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 18 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(ghost_debugger_llm_call_duration_seconds_bucket[5m])) by (agent_name, le))",
+          "legendFormat": "p99 {{agent_name}}"
+        },
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(ghost_debugger_llm_call_duration_seconds_bucket[5m])) by (agent_name, le))",
+          "legendFormat": "p50 {{agent_name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "yellow", "value": 15 },
+              { "color": "red", "value": 20 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 14,
+      "title": "Tool Call Success Rate",
+      "description": "Success rate of each tool. Drop = backend degraded.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 18 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(ghost_debugger_agent_tool_calls_total{status=\"success\"}[5m])) by (tool_name) / sum(rate(ghost_debugger_agent_tool_calls_total[5m])) by (tool_name)",
+          "legendFormat": "{{tool_name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": 0 },
+              { "color": "yellow", "value": 0.8 },
+              { "color": "green", "value": 0.95 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 20,
+      "title": "ROW: Incident Analysis",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 26 }
+    },
+    {
+      "id": 21,
+      "title": "Incident Analysis Duration p50 / p99 (seconds)",
+      "description": "End-to-end pipeline duration. Target: p99 < 90s.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 27 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, rate(ghost_debugger_incident_analysis_duration_seconds_bucket[15m]))",
+          "legendFormat": "p99 end-to-end"
+        },
+        {
+          "expr": "histogram_quantile(0.50, rate(ghost_debugger_incident_analysis_duration_seconds_bucket[15m]))",
+          "legendFormat": "p50 end-to-end"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "yellow", "value": 90 },
+              { "color": "red", "value": 120 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 22,
+      "title": "Incidents by Severity and Outcome",
+      "description": "Incident volume and outcomes over time.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 27 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(increase(ghost_debugger_incident_analysis_total[1h])) by (severity)",
+          "legendFormat": "complete {{severity}}"
+        },
+        {
+          "expr": "sum(increase(ghost_debugger_incident_analysis_total{status=\"partial\"}[1h]))",
+          "legendFormat": "partial (degraded signals)"
+        },
+        {
+          "expr": "sum(increase(ghost_debugger_incident_analysis_total{status=\"failed\"}[1h]))",
+          "legendFormat": "failed"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" },
+        "overrides": [
+          {
+            "matcher": { "id": "nameContains", "options": "failed" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 23,
+      "title": "Active Analyses",
+      "description": "Incidents currently being analyzed. Alert > 5.",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 35 },
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "ghost_debugger_active_analyses", "legendFormat": "Active" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "yellow", "value": 3 },
+              { "color": "red", "value": 5 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 24,
+      "title": "Signal Completeness",
+      "description": "Full vs partial signal availability.",
+      "type": "piechart",
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 35 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(increase(ghost_debugger_signal_completeness_total[24h])) by (completeness)",
+          "legendFormat": "{{completeness}}"
+        }
+      ],
+      "options": { "legend": { "displayMode": "table" } }
+    },
+    {
+      "id": 25,
+      "title": "Knowledge Base Size",
+      "description": "Total postmortems stored for RAG.",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 35 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(increase(ghost_debugger_postmortem_stored_total{status=\"success\"}[365d]))",
+          "legendFormat": "Stored"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "steps": [
+              { "color": "yellow", "value": 0 },
+              { "color": "green", "value": 10 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 26,
+      "title": "Incidents Detected per Hour",
+      "description": "Rate of incident detection.",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 35 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(increase(ghost_debugger_gateway_incident_detected_total[1h]))",
+          "legendFormat": "Incidents/hr"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" }
+      }
+    }
+  ]
 }
