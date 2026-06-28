@@ -1,4 +1,4 @@
-﻿# Ghost Debugger
+# Ghost Debugger
 
 <p align="center">
   <img src="https://img.shields.io/badge/Go-1.23+-00ADD8?logo=go&logoColor=white" alt="Go">
@@ -13,7 +13,7 @@
 > An AI-powered distributed incident analysis system that ingests
 > OpenTelemetry traces, Prometheus metrics, and structured logs from
 > instrumented microservices, routes them through a LangGraph multi-agent
-> pipeline, and generates structured postmortem reports â€” reducing mean
+> pipeline, and generates structured postmortem reports — reducing mean
 > time to root cause from hours to under 90 seconds.
 
 **No API key required to run locally.** Ghost Debugger defaults to
@@ -32,7 +32,7 @@ queries under pressure, often without knowing which service to query first.
 Logs are unstructured, high-volume, and spread across multiple services.
 An on-call SRE at 3am must open three tools, write queries, mentally
 correlate events across all three sources by timestamp, determine which
-service failed first, determine why, and write a postmortem â€” a process
+service failed first, determine why, and write a postmortem — a process
 that routinely takes 45 minutes to 4 hours depending on incident complexity.
 
 The data to answer "what failed and why" is always there. The problem is
@@ -171,14 +171,14 @@ the parallel phase equals the slowest agent (~20-25s), not the sum (~55s).
 SQLite checkpointing saves state after every node completion. Thread ID =
 incident_id. If the process crashes after `trace_analyzer` completes but
 before `log_correlator` finishes, the next invocation with the same
-`incident_id` resumes from the saved checkpoint â€” the trace analysis work
+`incident_id` resumes from the saved checkpoint — the trace analysis work
 is not repeated.
 
 ---
 
 ## Quick Start
 
-### Option A â€” Local (No API Key, Ollama)
+### Option A — Local (No API Key, Ollama)
 
 ```bash
 # 1. Install Ollama
@@ -186,7 +186,7 @@ is not repeated.
 #    Linux:   curl -fsSL https://ollama.ai/install.sh | sh
 #    Windows: https://ollama.ai/download
 
-# 2. Pull a model (qwen2.5 is recommended â€” auto-detected at runtime)
+# 2. Pull a model (qwen2.5 is recommended — auto-detected at runtime)
 ollama pull qwen2.5
 
 # 3. Clone and start
@@ -200,7 +200,7 @@ sleep 30
 open http://localhost:8090
 ```
 
-### Option B â€” Cloud (Gemini API, Faster + Better Quality)
+### Option B — Cloud (Gemini API, Faster + Better Quality)
 
 ```bash
 git clone https://github.com/sujithm/ghost-debugger.git
@@ -279,7 +279,7 @@ The same incident analyzed twice should produce the same root cause.
 
 ## Demo: Analyzing a Real Failure
 
-### Step 1 â€” Establish a Baseline
+### Step 1 — Establish a Baseline
 
 Send normal traffic for 30 seconds so Prometheus has a baseline to
 compare against when the failure is active:
@@ -291,11 +291,11 @@ for i in $(seq 1 30); do
 done
 ```
 
-### Step 2 â€” Inject a Cascade Failure
+### Step 2 — Inject a Cascade Failure
 
 Inject 2500ms artificial latency into `service_b`. `service_a`, which calls
 `service_b` synchronously, will begin timing out and returning 502 errors.
-This is the classic cascade failure pattern â€” a slow dependency causes
+This is the classic cascade failure pattern — a slow dependency causes
 upstream services to exhaust their request timeouts.
 
 ```bash
@@ -309,7 +309,7 @@ curl -X POST http://localhost:8099/inject \
   }'
 ```
 
-### Step 3 â€” Generate Traffic During the Failure
+### Step 3 — Generate Traffic During the Failure
 
 ```bash
 for i in $(seq 1 30); do
@@ -320,9 +320,9 @@ done
 
 Open **Jaeger** at http://localhost:16686 and select `service_a`. Traces
 show `service_a.process` spans taking ~2600ms waiting for `service_b`.
-The waterfall diagram shows the cascade: `service_a` â†’ `service_b` (slow).
+The waterfall diagram shows the cascade: `service_a` → `service_b` (slow).
 
-### Step 4 â€” Trigger Ghost Debugger Analysis
+### Step 4 — Trigger Ghost Debugger Analysis
 
 ```bash
 curl -X POST http://localhost:8090/analyze \
@@ -337,61 +337,61 @@ curl -X POST http://localhost:8090/analyze \
 
 Or click **+ New Analysis** in the dashboard at http://localhost:8090.
 
-### Step 5 â€” Watch the Reasoning Chain
+### Step 5 — Watch the Reasoning Chain
 
 The dashboard left panel shows every agent step in real time:
 
 ```
-ðŸš€ Pipeline started                                          14:03:25
-â³ Triage â€” Assessing scope and severity                     14:03:26
-ðŸ”§ Triage â†’ tool_query_latency_p99(service_b, 60)           14:03:27
-ðŸ“¥ returned: latest_value_ms: 2487 â€” is_anomalous: true
-ðŸ”§ Triage â†’ tool_query_error_rate(service_a, 60)            14:03:29
-ðŸ“¥ returned: latest_percent: 18.3% â€” is_anomalous: true
-âœ… Triage completed [6.4s]                                   14:03:32
-   Severity: SEV1 â€” Confirmed: service_a, service_b
+🚀 Pipeline started                                          14:03:25
+⏳ Triage — Assessing scope and severity                     14:03:26
+🔧 Triage → tool_query_latency_p99(service_b, 60)           14:03:27
+📥 returned: latest_value_ms: 2487 — is_anomalous: true
+🔧 Triage → tool_query_error_rate(service_a, 60)            14:03:29
+📥 returned: latest_percent: 18.3% — is_anomalous: true
+✅ Triage completed [6.4s]                                   14:03:32
+   Severity: SEV1 — Confirmed: service_a, service_b
 
-â³ Trace Analyzer started                                    14:03:32
-â³ Log Correlator started                                    14:03:32  â† parallel
-â³ Metric Reasoner started                                   14:03:32  â† parallel
+⏳ Trace Analyzer started                                    14:03:32
+⏳ Log Correlator started                                    14:03:32  ← parallel
+⏳ Metric Reasoner started                                   14:03:32  ← parallel
 
-ðŸ”§ Metric â†’ tool_query_db_connections(service_b, 60)        14:03:34
-ðŸ“¥ returned: latest_active: 23.0 â€” normal range
-ðŸ”§ Metric â†’ tool_query_latency_p99(service_b, 60)           14:03:35
-ðŸ“¥ returned: latest_value_ms: 2487 â€” 12.4x average
+🔧 Metric → tool_query_db_connections(service_b, 60)        14:03:34
+📥 returned: latest_active: 23.0 — normal range
+🔧 Metric → tool_query_latency_p99(service_b, 60)           14:03:35
+📥 returned: latest_value_ms: 2487 — 12.4x average
 
-âœ… Log Correlator completed [18.7s]                          14:03:51
-   DeadlineExceeded pattern â€” service_a logs, first seen 14:03:18
-âœ… Metric Reasoner completed [19.2s]                         14:03:51
-   p99: 2487ms (12.4x avg) â€” no resource saturation detected
-âœ… Trace Analyzer completed [22.1s]                          14:03:54
-   First error: service_a â€” Cascade: service_b â†’ service_a
+✅ Log Correlator completed [18.7s]                          14:03:51
+   DeadlineExceeded pattern — service_a logs, first seen 14:03:18
+✅ Metric Reasoner completed [19.2s]                         14:03:51
+   p99: 2487ms (12.4x avg) — no resource saturation detected
+✅ Trace Analyzer completed [22.1s]                          14:03:54
+   First error: service_a — Cascade: service_b → service_a
 
-â³ Correlation Agent started                                 14:03:54
-ðŸ”§ Correlation â†’ tool_search_similar_incidents               14:03:55
-ðŸ“¥ returned: INC-2024-07-22 similarity: 0.84
-âœ… Correlation completed [9.3s]                              14:04:03
-   Step 1: service_b latency â†’ 2487ms at 14:03:15
+⏳ Correlation Agent started                                 14:03:54
+🔧 Correlation → tool_search_similar_incidents               14:03:55
+📥 returned: INC-2024-07-22 similarity: 0.84
+✅ Correlation completed [9.3s]                              14:04:03
+   Step 1: service_b latency → 2487ms at 14:03:15
    Step 2: service_a DeadlineExceeded at 14:03:22
-   Step 3: service_a error rate â†’ 18.3% at 14:03:28
+   Step 3: service_a error rate → 18.3% at 14:03:28
 
-âœ… Root Cause completed [8.9s]                               14:04:12
+✅ Root Cause completed [8.9s]                               14:04:12
    [87% confidence] service_b latency spike (2500ms) caused
-   service_a to exhaust request timeout â€” cascade to users
+   service_a to exhaust request timeout — cascade to users
 
-âœ… Postmortem Writer completed [9.1s]                        14:04:21
-   4,923 chars â€” signals: full
+✅ Postmortem Writer completed [9.1s]                        14:04:21
+   4,923 chars — signals: full
 
-ðŸŽ¯ Analysis complete â€” 56 seconds                           14:04:21
+🎯 Analysis complete — 56 seconds                           14:04:21
 ```
 
-### Step 6 â€” Review the Postmortem
+### Step 6 — Review the Postmortem
 
 The right panel renders the complete structured postmortem with:
 severity summary, timeline table, root cause with confidence bar,
 contributing factors, action items, and links to Jaeger traces.
 
-### Step 7 â€” Reset and Try Other Scenarios
+### Step 7 — Reset and Try Other Scenarios
 
 ```bash
 # Reset the failure
@@ -404,8 +404,8 @@ curl -X POST http://localhost:8099/reset
 
 **Other scenarios:**
 ```bash
-./scripts/run_scenario.sh cascade   # latency â†’ cascade failure
-./scripts/run_scenario.sh resource  # error rate â†’ resource exhaustion
+./scripts/run_scenario.sh cascade   # latency → cascade failure
+./scripts/run_scenario.sh resource  # error rate → resource exhaustion
 ./scripts/run_scenario.sh traffic   # 10x traffic spike
 ```
 
@@ -414,7 +414,7 @@ curl -X POST http://localhost:8099/reset
 ## Engineering Decisions
 
 Every significant choice made during implementation is documented below.
-These are the questions a senior engineer would ask â€” answered with the
+These are the questions a senior engineer would ask — answered with the
 specific tradeoffs for this system.
 
 ---
@@ -425,7 +425,7 @@ The gateway receives up to 10,000 telemetry events per second across all
 services. At this volume, three costs make REST/JSON the wrong choice:
 
 **Serialization cost.** A trace with 50 spans serialized to JSON is
-approximately 5Ã— larger than the same data in protobuf binary format.
+approximately 5× larger than the same data in protobuf binary format.
 At 10,000 events/second, this is the difference between 50MB/s and 10MB/s
 of wire traffic.
 
@@ -435,12 +435,12 @@ type inference. Protobuf fields are located by fixed byte offsets.
 
 **Connection overhead.** HTTP/1.1 creates a new TCP connection per request
 unless keep-alive is managed explicitly. gRPC runs over HTTP/2 with
-multiplexed streams â€” all three test services share one TCP connection to
+multiplexed streams — all three test services share one TCP connection to
 the gateway simultaneously.
 
 The `.proto` file also serves as the canonical API documentation and
 enforces compatibility at compile time. When a service sends a field that
-doesn't exist in the schema, the error is caught during code generation â€”
+doesn't exist in the schema, the error is caught during code generation —
 not as a mysterious null pointer in production.
 
 The cost of this choice is tooling complexity. Proto files require a code
@@ -453,7 +453,7 @@ high-throughput telemetry system.
 
 ### Why Token Bucket over Leaky Bucket for Rate Limiting
 
-Leaky bucket enforces a strictly uniform output rate â€” it smooths all bursts
+Leaky bucket enforces a strictly uniform output rate — it smooths all bursts
 by queuing or dropping requests that arrive faster than the drain rate.
 This is the right choice when the downstream system cannot handle any burst.
 
@@ -463,12 +463,12 @@ events instantly if the bucket is full, then sustains at 1,000 per second.
 
 **The critical insight:** incidents cause bursts. When `service_b` starts
 failing, it emits a burst of error spans, error logs, and anomalous
-metrics â€” precisely the telemetry needed for root cause analysis. A leaky
+metrics — precisely the telemetry needed for root cause analysis. A leaky
 bucket would smooth away this burst, losing the highest-value data at the
 worst possible moment. Token bucket allows the incident burst (up to
 capacity) while still protecting against sustained telemetry storms.
 
-The implementation uses lazy refill â€” tokens are not refilled on a
+The implementation uses lazy refill — tokens are not refilled on a
 background goroutine (which would require one goroutine per service).
 Instead, tokens refill on each `Allow()` call by computing accumulation
 since last access. This is the same approach as `golang.org/x/time/rate`.
@@ -480,17 +480,17 @@ since last access. This is the same approach as `golang.org/x/time/rate`.
 The three analysis agents query different backends: Jaeger for traces,
 Prometheus for metrics, log store for logs. These queries are I/O-bound
 and completely independent. There is no reason for the log agent to wait
-for the trace agent â€” they read different data and their findings are
+for the trace agent — they read different data and their findings are
 independent.
 
-Sequential execution (trace â†’ log â†’ metric) would add approximately
+Sequential execution (trace → log → metric) would add approximately
 30-40 seconds of unnecessary waiting. Parallel execution via LangGraph's
 `Send()` API brings combined time to the duration of the *slowest* agent
 (~20-25s) rather than the *sum* (~55s).
 
 The implementation challenge was state merging. When three agents run
 concurrently and all append to `completed_agents`, naive last-writer-wins
-causes data loss â€” two of three writes are silently discarded. A custom
+causes data loss — two of three writes are silently discarded. A custom
 `_dedupe_merge` reducer applied via `Annotated[List, _dedupe_merge]` solves
 this by concatenating lists without duplicates, applied atomically when all
 threads complete. This replaced the initial `operator.add` approach which
@@ -516,11 +516,11 @@ LangGraph provides four capabilities that justify the abstraction:
 
 **Checkpointing.** After every node, full state is serialized to SQLite.
 A crash after the 20-second parallel analysis phase resumes from checkpoint
-on the next invocation â€” the expensive LLM calls are not repeated.
+on the next invocation — the expensive LLM calls are not repeated.
 
 **Conditional routing.** SEV3 incidents skip the three parallel analysis
 agents entirely, going directly to correlation. This is a one-function
-conditional edge â€” not a growing chain of if/else in imperative code.
+conditional edge — not a growing chain of if/else in imperative code.
 
 **Typed state.** `PostmortemState` is a `TypedDict` with 35 fields and
 documented ownership (each field written by exactly one agent). This makes
@@ -533,7 +533,7 @@ This cannot be replicated with sequential API calls.
 The cost is the framework abstraction layer. Debugging requires understanding
 LangGraph's execution model, and the framework adds ~200ms overhead per
 pipeline execution. This cost is accepted because checkpointing, routing,
-and parallel execution are architectural requirements â€” not conveniences.
+and parallel execution are architectural requirements — not conveniences.
 
 ---
 
@@ -556,14 +556,14 @@ the development machine.
 **Implementation decision:** The provider selection is a single conditional
 in `agents/shared/llm.py`, checked once at `get_llm()` call time (which
 is cached via `@lru_cache`). Both providers implement the same
-LangChain interface, so no agent code changes â€” the tool binding,
+LangChain interface, so no agent code changes — the tool binding,
 `invoke()`, and streaming calls are identical. This is the clean
 abstraction boundary that makes the swap a 10-line change rather than
 a refactor.
 
 The quality difference is real: Gemini 2.0 Flash produces more reliable
 structured output than small local models. The regex-based output parsers
-in each agent node were written to handle both â€” they look for patterns
+in each agent node were written to handle both — they look for patterns
 rather than assuming perfect formatting, which makes them resilient to
 model variation.
 
@@ -585,7 +585,7 @@ would replace the shared API.
 
 **Single agent service instance.** The Python agent service is limited by
 API quota (Gemini) or hardware (Ollama). Production would run multiple
-instances with consistent hashing on `incident_id` â€” replacing SQLite
+instances with consistent hashing on `incident_id` — replacing SQLite
 checkpointing with PostgreSQL, which is a one-line change in LangGraph's
 checkpointer configuration.
 
@@ -596,7 +596,7 @@ with TTL-based cleanup.
 **No human-in-the-loop approval.** Postmortems auto-publish. Production
 needs a review workflow where the on-call SRE approves the report before
 it's stored in ChromaDB, with corrections feeding back as verified training
-examples â€” closing the learning loop.
+examples — closing the learning loop.
 
 **Static detection thresholds.** The incident detector uses fixed thresholds
 (5% error rate, 2000ms p99). Production would calibrate thresholds per
@@ -621,13 +621,13 @@ Measured over 12 complete pipeline executions (Gemini 2.0 Flash):
 |-------|-----|-----|-------|
 | Triage agent | 12.3s | 18.7s | 2-3 LLM calls + 4 storage queries |
 | Parallel analysis (wall-clock) | 19.8s | 27.4s | Slowest of 3 agents |
-| â€” Trace analyzer | 18.2s | 24.1s | |
-| â€” Log correlator | 16.4s | 21.3s | |
-| â€” Metric reasoner | 19.8s | 27.4s | Most tool calls (7 metrics) |
+| — Trace analyzer | 18.2s | 24.1s | |
+| — Log correlator | 16.4s | 21.3s | |
+| — Metric reasoner | 19.8s | 27.4s | Most tool calls (7 metrics) |
 | Correlation agent | 8.9s | 13.2s | 1 LLM call + 1 ChromaDB query |
 | Root cause agent | 7.4s | 11.8s | 1 LLM call, no tools |
 | Postmortem writer | 8.1s | 12.6s | 1 LLM call, no tools |
-| **Total (Gemini)** | **56.5s** | **83.9s** | **Target: < 90s âœ“** |
+| **Total (Gemini)** | **56.5s** | **83.9s** | **Target: < 90s ✓** |
 | **Total (Ollama CPU)** | ~160s | ~210s | Hardware dependent |
 | **Total (Ollama GPU)** | ~90s | ~130s | Hardware dependent |
 
@@ -653,63 +653,63 @@ Measured over 12 complete pipeline executions (Gemini 2.0 Flash):
 
 ```
 ghost-debugger/
-â”œâ”€â”€ ARCHITECTURE.md          System design and component contracts
-â”œâ”€â”€ DESIGN_DECISIONS.md      All engineering tradeoffs with rationale
-â”‚
-â”œâ”€â”€ proto/                   Protobuf contracts (generated code excluded)
-â”‚   â”œâ”€â”€ telemetry.proto      Trace, log, metric ingestion interface
-â”‚   â””â”€â”€ agent.proto          Incident analysis + Ping for cross-language test
-â”‚
-â”œâ”€â”€ gateway/                 Go: telemetry ingestion + agent routing
-â”‚   â”œâ”€â”€ main.go              Wires components, starts gRPC + HTTP servers
-â”‚   â”œâ”€â”€ ratelimiter/         Token bucket (from-scratch, 8 unit tests)
-â”‚   â”œâ”€â”€ circuitbreaker/      3-state machine CLOSED/OPEN/HALF-OPEN (9 tests)
-â”‚   â”œâ”€â”€ server/              gRPC TelemetryService implementation
-â”‚   â”œâ”€â”€ incidentdetector/    Sliding window threshold detection
-â”‚   â”œâ”€â”€ metrics/             Prometheus metrics registry + recorder
-â”‚   â””â”€â”€ telemetry/           OpenTelemetry initialization
-â”‚
-â”œâ”€â”€ agents/                  Python: LangGraph agent pipeline
-â”‚   â”œâ”€â”€ state/               PostmortemState TypedDict (35 fields)
-â”‚   â”œâ”€â”€ tools/               11 @tool wrappers around TelemetryQuerier
-â”‚   â”œâ”€â”€ shared/
-â”‚   â”‚   â”œâ”€â”€ llm.py           Gemini / Ollama dual provider (auto-selected)
-â”‚   â”‚   â””â”€â”€ node_utils.py    run_react_loop(), format_state_for_prompt()
-â”‚   â”œâ”€â”€ triage/              Scope + severity assessment
-â”‚   â”œâ”€â”€ trace_analyzer/      Distributed trace cascade path
-â”‚   â”œâ”€â”€ log_correlator/      Log pattern clustering
-â”‚   â”œâ”€â”€ metric_reasoner/     Resource saturation detection (7 metrics)
-â”‚   â”œâ”€â”€ correlation/         Temporal causal chain + ChromaDB RAG
-â”‚   â”œâ”€â”€ root_cause/          Pure reasoning, confidence scoring
-â”‚   â”œâ”€â”€ postmortem_writer/   Structured markdown report generation
-â”‚   â”œâ”€â”€ pipeline/            StateGraph wiring + SQLite checkpointing
-â”‚   â”œâ”€â”€ storage/             JaegerClient, PrometheusClient, ChromaDBClient
-â”‚   â”œâ”€â”€ server/              FastAPI (REST + SSE) + IncidentStore
-â”‚   â”œâ”€â”€ dashboard/           Single-file HTML dashboard (no build step)
-â”‚   â””â”€â”€ observability/       OpenTelemetry + Prometheus for agent service
-â”‚
-â”œâ”€â”€ test_services/           Go: instrumented microservices for demos
-â”‚   â”œâ”€â”€ service_a/           Upstream service (calls service_b)
-â”‚   â”œâ”€â”€ service_b/           Middle service â€” primary failure injection target
-â”‚   â”œâ”€â”€ service_c/           Leaf service (no downstream)
-â”‚   â””â”€â”€ failure_injector/    Chaos control plane (latency/errors/memory)
-â”‚
-â”œâ”€â”€ storage/
-â”‚   â”œâ”€â”€ prometheus/          prometheus.yml + alert_rules.yml (7 alerts)
-â”‚   â””â”€â”€ grafana/             Dashboard JSON + datasource provisioning
-â”‚
-â”œâ”€â”€ scripts/
-â”‚   â”œâ”€â”€ gen_proto.sh         Regenerate Go + Python stubs from .proto
-â”‚   â”œâ”€â”€ health_check.sh      Verify full stack is running
-â”‚   â”œâ”€â”€ inject_failure.sh    Quick failure injection shortcuts
-â”‚   â”œâ”€â”€ run_scenario.sh      Automated scenario execution + result saving
-â”‚   â””â”€â”€ preflight_check.sh   Pre-scenario system verification
-â”‚
-â”œâ”€â”€ docs/
-â”‚   â”œâ”€â”€ metrics.md           Every metric: question + threshold + action
-â”‚   â””â”€â”€ postmortem-examples/ Real postmortem reports from scenario runs
-â”‚
-â””â”€â”€ docker-compose.yml       Full system: infrastructure + services + app
+├── ARCHITECTURE.md          System design and component contracts
+├── DESIGN_DECISIONS.md      All engineering tradeoffs with rationale
+│
+├── proto/                   Protobuf contracts (generated code excluded)
+│   ├── telemetry.proto      Trace, log, metric ingestion interface
+│   └── agent.proto          Incident analysis + Ping for cross-language test
+│
+├── gateway/                 Go: telemetry ingestion + agent routing
+│   ├── main.go              Wires components, starts gRPC + HTTP servers
+│   ├── ratelimiter/         Token bucket (from-scratch, 8 unit tests)
+│   ├── circuitbreaker/      3-state machine CLOSED/OPEN/HALF-OPEN (9 tests)
+│   ├── server/              gRPC TelemetryService implementation
+│   ├── incidentdetector/    Sliding window threshold detection
+│   ├── metrics/             Prometheus metrics registry + recorder
+│   └── telemetry/           OpenTelemetry initialization
+│
+├── agents/                  Python: LangGraph agent pipeline
+│   ├── state/               PostmortemState TypedDict (35 fields)
+│   ├── tools/               11 @tool wrappers around TelemetryQuerier
+│   ├── shared/
+│   │   ├── llm.py           Gemini / Ollama dual provider (auto-selected)
+│   │   └── node_utils.py    run_react_loop(), format_state_for_prompt()
+│   ├── triage/              Scope + severity assessment
+│   ├── trace_analyzer/      Distributed trace cascade path
+│   ├── log_correlator/      Log pattern clustering
+│   ├── metric_reasoner/     Resource saturation detection (7 metrics)
+│   ├── correlation/         Temporal causal chain + ChromaDB RAG
+│   ├── root_cause/          Pure reasoning, confidence scoring
+│   ├── postmortem_writer/   Structured markdown report generation
+│   ├── pipeline/            StateGraph wiring + SQLite checkpointing
+│   ├── storage/             JaegerClient, PrometheusClient, ChromaDBClient
+│   ├── server/              FastAPI (REST + SSE) + IncidentStore
+│   ├── dashboard/           Single-file HTML dashboard (no build step)
+│   └── observability/       OpenTelemetry + Prometheus for agent service
+│
+├── test_services/           Go: instrumented microservices for demos
+│   ├── service_a/           Upstream service (calls service_b)
+│   ├── service_b/           Middle service — primary failure injection target
+│   ├── service_c/           Leaf service (no downstream)
+│   └── failure_injector/    Chaos control plane (latency/errors/memory)
+│
+├── storage/
+│   ├── prometheus/          prometheus.yml + alert_rules.yml (7 alerts)
+│   └── grafana/             Dashboard JSON + datasource provisioning
+│
+├── scripts/
+│   ├── gen_proto.sh         Regenerate Go + Python stubs from .proto
+│   ├── health_check.sh      Verify full stack is running
+│   ├── inject_failure.sh    Quick failure injection shortcuts
+│   ├── run_scenario.sh      Automated scenario execution + result saving
+│   └── preflight_check.sh   Pre-scenario system verification
+│
+├── docs/
+│   ├── metrics.md           Every metric: question + threshold + action
+│   └── postmortem-examples/ Real postmortem reports from scenario runs
+│
+└── docker-compose.yml       Full system: infrastructure + services + app
 ```
 
 ---
@@ -717,17 +717,17 @@ ghost-debugger/
 ## Running the Tests
 
 ```bash
-# Go gateway â€” unit tests with race detector
+# Go gateway — unit tests with race detector
 cd gateway
 go test ./... -v -race -count=1
 # 17 tests: 8 ratelimiter + 9 circuitbreaker
 
-# Python storage layer â€” unit tests (no running services needed)
+# Python storage layer — unit tests (no running services needed)
 cd agents && source venv/bin/activate
 pytest storage/tests/ -v
 # 22 tests: 10 Jaeger + 6 Prometheus + 6 ChromaDB (in-memory)
 
-# Python pipeline â€” integration tests
+# Python pipeline — integration tests
 # With Gemini:
 pytest tests/test_pipeline_integration.py -v -s --timeout=180 -m integration
 
@@ -746,7 +746,7 @@ using live instrumented microservices.
 **Setup:** 2500ms latency injected into service_b
 **Ghost Debugger correctly identified:**
 - service_b as the latency origin
-- Cascade pattern: service_b slow â†’ service_a timeouts
+- Cascade pattern: service_b slow → service_a timeouts
 - Time from detection to postmortem: ~65 seconds
 
 ### Scenario 2: Resource Exhaustion
@@ -779,7 +779,7 @@ for production readiness.
 **Human-in-the-loop approval workflow:**
 Postmortems should not auto-publish. The on-call SRE should review and
 optionally correct the AI-generated root cause. Approved corrections feed
-back into ChromaDB as verified examples â€” the system improves with each
+back into ChromaDB as verified examples — the system improves with each
 incident. This builds operator trust faster than any other change.
 
 **Dynamic detection thresholds:**
@@ -822,7 +822,7 @@ for agents that produce structured data (triage severity, cascade path).
 
 ## License
 
-MIT License â€” see [LICENSE](LICENSE)
+MIT License — see [LICENSE](LICENSE)
 
 ---
 
