@@ -1,4 +1,4 @@
-import json
+﻿import json
 import logging
 from typing import List, Optional, Dict
 from datetime import datetime, timezone
@@ -106,3 +106,55 @@ def safe_append(existing, new_items) -> list:
     elif new_items:
         result.append(new_items)
     return result
+
+def is_empty_tool_result(result_str: str) -> bool:
+    if not result_str or not result_str.strip():
+        return True
+    try:
+        data = json.loads(result_str)
+    except (json.JSONDecodeError, TypeError):
+        return False
+    if data.get("error"):
+        return True
+    if "total_traces" in data and data["total_traces"] == 0:
+        return True
+    if "total_entries" in data and data["total_entries"] == 0:
+        return True
+    if "data_point_count" in data and data["data_point_count"] == 0:
+        return True
+    if "latest_value" in data and data["latest_value"] == 0.0:
+        if "is_anomalous" in data and not data["is_anomalous"]:
+            return True
+    return False
+
+
+def summarize_empty_signals(
+    trace_empty: bool,
+    log_empty: bool,
+    metric_empty: bool,
+) -> str:
+    available = []
+    missing = []
+    if not trace_empty:
+        available.append("traces")
+    else:
+        missing.append("traces")
+    if not log_empty:
+        available.append("logs")
+    else:
+        missing.append("logs")
+    if not metric_empty:
+        available.append("metrics")
+    else:
+        missing.append("metrics")
+    if not available:
+        return (
+            "NO OBSERVABILITY DATA. Jaeger, Prometheus, and log store "
+            "all returned empty results. Do NOT invent data."
+        )
+    parts = []
+    if available:
+        parts.append(f"Available: {', '.join(available)}")
+    if missing:
+        parts.append(f"MISSING: {', '.join(missing)} — do not fabricate values")
+    return " | ".join(parts)

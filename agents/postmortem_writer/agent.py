@@ -1,4 +1,4 @@
-import logging
+﻿import logging
 from datetime import datetime, timezone
 from agents.state.postmortem_state import PostmortemState
 from agents.shared.llm import get_llm
@@ -12,10 +12,10 @@ Your job is to write a clear, structured postmortem report from the analysis
 findings. This report will be read by engineers and engineering managers.
 
 TONE AND STYLE:
-- Factual and precise — use specific numbers and timestamps
-- Blameless — focus on systems and processes, not individuals
-- Actionable — every section leads to clear next steps
-- Honest about uncertainty — note confidence levels and data gaps
+- Factual and precise - use specific numbers and timestamps
+- Blameless - focus on systems and processes, not individuals
+- Actionable - every section leads to clear next steps
+- Honest about uncertainty - note confidence levels and data gaps
 
 The postmortem MUST follow this exact structure (use these exact headers):
 
@@ -89,7 +89,7 @@ If all signals available: "All three observability signals were available during
 
 
 def postmortem_writer_node(state: PostmortemState) -> dict:
-    logger.info(f"[postmortem_writer] starting — incident: {state['incident_id']}")
+    logger.info(f"[postmortem_writer] starting - incident: {state['incident_id']}")
 
     signal_completeness = "full"
     missing_signals = []
@@ -102,6 +102,29 @@ def postmortem_writer_node(state: PostmortemState) -> dict:
     if not state.get("metric_had_error"):
         missing_signals.append("metrics")
         signal_completeness = "partial"
+
+    # Check for no-data condition: triage found no telemetry data
+    errors = state.get("errors", [])
+    no_data = any(
+        "no telemetry" in e.lower() or "no data" in e.lower()
+        for e in errors
+    )
+    confirmed_services = state.get("triage_confirmed_services", [])
+    has_any_findings = any([
+        state.get("trace_had_error"),
+        state.get("log_had_error"),
+        state.get("metric_had_error"),
+        state.get("triage_findings") and state["triage_findings"] != [],
+    ])
+
+    if no_data or (not confirmed_services and not has_any_findings):
+        report = _generate_no_data_report(state, errors)
+        return {
+            "postmortem_report": report,
+            "signal_completeness": "none",
+            "completed_agents": safe_append(state.get("completed_agents", []), "postmortem_writer"),
+            "analysis_end_at": now_iso(),
+        }
 
     all_findings = format_state_for_prompt(state, [
         "triage_findings", "triage_severity", "triage_confirmed_services",
@@ -150,7 +173,7 @@ Current time: {now}"""
         if not report.startswith("# Postmortem"):
             report = f"# Postmortem: {state.get('trigger_description', 'Incident Analysis')}\n\n" + report
 
-        logger.info(f"[postmortem_writer] complete — report length: {len(report)} chars")
+        logger.info(f"[postmortem_writer] complete - report length: {len(report)} chars")
 
         return {
             "postmortem_report": report,
@@ -161,7 +184,6 @@ Current time: {now}"""
 
     except Exception as e:
         logger.error(f"[postmortem_writer] failed: {e}")
-
         fallback_report = _generate_fallback_report(state, signal_completeness, str(e))
 
         return {
@@ -170,6 +192,76 @@ Current time: {now}"""
             "failed_agents": safe_append(state.get("failed_agents", []), "postmortem_writer"),
             "errors": safe_append(state.get("errors", []), f"[postmortem_writer] {type(e).__name__}: {str(e)[:200]}"),
         }
+
+
+def _generate_no_data_report(state: PostmortemState, errors: list) -> str:
+    now = datetime.now(tz=timezone.utc).isoformat()
+    services = ", ".join(state.get("affected_services", ["unknown"]))
+
+    return f"""# Postmortem: Analysis Could Not Be Completed
+
+## Incident Summary
+| Field | Value |
+|-------|-------|
+| Incident ID | {state['incident_id']} |
+| Severity | UNKNOWN - Insufficient data |
+| Status | Unresolved - Manual investigation required |
+| Detected At | {state.get('detected_at', 'Unknown')} |
+| Affected Services | {services} (unconfirmed) |
+| Root Cause Confidence | 0% - No telemetry data available |
+
+## Why This Report Could Not Be Generated
+
+Ghost Debugger requires telemetry data from running instrumented services
+to perform incident analysis. This analysis failed because no data was
+available from Jaeger (traces), Prometheus (metrics), or the log store.
+
+**This is not a bug in Ghost Debugger.** This happens when:
+
+1. **Services are not running** - Start the test services:
+   `ash
+   docker compose --profile services up -d
+   `
+
+2. **No traffic has been sent** - Services need to receive requests before
+   they emit telemetry. Send baseline traffic:
+   `ash
+   for i in $(seq 1 20); do
+     curl -s http://localhost:8081/api/process > /dev/null
+     sleep 1
+   done
+   `
+
+3. **Failure not yet injected** - Inject a failure to create anomalous signal:
+   `ash
+   ./scripts/inject_failure.sh cascade
+   `
+
+4. **Prometheus not scraping** - Verify at http://localhost:9090/targets
+   that service targets are UP.
+
+5. **Jaeger not receiving spans** - Verify at http://localhost:16686 that
+   services appear in the service dropdown.
+
+## Errors Recorded
+
+{chr(10).join(f'- {e}' for e in errors) if errors else '- No errors recorded'}
+
+## Required Action
+
+Run the pre-flight check to verify the system state:
+`ash
+./scripts/preflight_check.sh
+`
+
+Then run a scenario:
+`ash
+./scripts/run_scenario.sh cascade
+`
+
+---
+*Report generated at {now} - Ghost Debugger v1.0.0*
+*Signal completeness: none (no telemetry data received)*"""
 
 
 def _generate_fallback_report(state: PostmortemState, completeness: str, error: str) -> str:
@@ -183,8 +275,8 @@ def _generate_fallback_report(state: PostmortemState, completeness: str, error: 
     contributing = state.get("contributing_factors", [])
 
     chain_lines = "\n".join(
-        f"| {step} | — | — |" for step in causal_chain
-    ) or "| — | No causal chain available | — |"
+        f"| {step} | - | - |" for step in causal_chain
+    ) or "| - | No causal chain available | - |"
 
     factor_lines = "\n".join(f"- {f}" for f in contributing) or "- Not determined"
 
@@ -218,3 +310,4 @@ All raw findings are preserved in the incident state.
 
 ---
 *Fallback report generated by Ghost Debugger at {now}*"""
+
