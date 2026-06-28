@@ -56,3 +56,7 @@ htmlcov/
 
 # Build artifacts
 bin/
+
+# Personal interview/resume prep (not project docs)
+docs/interview_prep.md
+docs/resume_integration.md
