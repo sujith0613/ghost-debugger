@@ -1,4 +1,4 @@
-﻿import json
+import json
 import logging
 from typing import List, Optional, Dict
 from datetime import datetime, timezone
@@ -156,5 +156,5 @@ def summarize_empty_signals(
     if available:
         parts.append(f"Available: {', '.join(available)}")
     if missing:
-        parts.append(f"MISSING: {', '.join(missing)} — do not fabricate values")
+        parts.append(f"MISSING: {', '.join(missing)} â€” do not fabricate values")
     return " | ".join(parts)

@@ -1,4 +1,4 @@
-﻿# No-Data Hallucination Analysis
+# No-Data Hallucination Analysis
 
 ## What the Output Reveals
 
