@@ -135,57 +135,28 @@ class node_n_compose,node_n_scripts toneTeal
 The pipeline is a 7-node LangGraph StateGraph with parallel execution
 for the three signal analysis agents.
 
-```
-INCIDENT DETECTED (error_rate > 5% for 60s on service_b)
-          |
-          v
-    +----------------------+
-    |   TRIAGE             |  Queries error_rate, latency_p99, request_rate
-    |   AGENT              |  per suspected service. Confirms affected services.
-    |                      |  Output: severity (SEV1/2/3), confirmed_services[]
-    +----------+-----------+
-               |
-               v route_after_triage()
-    +----------+-------------------------------------------+
-    |         PARALLEL ANALYSIS (Send API)                  |
-    |                                                        |
-    |  +-------------+  +---------------+  +---------------+ |
-    |  |    TRACE    |  |     LOG       |  |    METRIC     | |
-    |  |   AGENT     |  |    AGENT      |  |    AGENT      | |
-    |  |             |  |               |  |               | |
-    |  | query_traces|  | query_logs    |  | query_error_  | |
-    |  | cascade path|  | error pattern |  |  rate, p99,   | |
-    |  | first_error |  | first_time    |  |  db_conns,    | |
-    |  | _service    |  |               |  |  memory,      | |
-    |  |             |  |               |  |  goroutines   | |
-    |  +------+------+  +------+--------+  +------+--------+ |
-    |         |                |                   |          |
-    +---------+----------------+-------------------+----------+
-              | fan-in: _dedupe_merge reducer on completed_agents
-              | (waits for ALL three before proceeding)
-              v
-    +------------------------+
-    |  CORRELATION           |  Builds temporal causal chain from all signals.
-    |  AGENT                 |  RAG search: ChromaDB -> similar past incidents.
-    |                        |  Output: causal_chain[], similar_incidents[]
-    +----------+-------------+
-               |
-               v
-    +------------------------+
-    |   ROOT CAUSE           |  Pure reasoning - no tool calls.
-    |   AGENT                |  First event in causal chain = root cause.
-    |                        |  Output: root_cause string, confidence 0.0-1.0
-    +----------+-------------+
-               |
-               v
-    +------------------------+
-    |   POSTMORTEM           |  Generates structured markdown report.
-    |   WRITER               |  Stores in ChromaDB if confidence >= 0.5.
-    |                        |  Output: postmortem_report markdown
-    +----------+-------------+
-               |
-               v
-             END
+```mermaid
+flowchart TD
+  INCIDENT["INCIDENT DETECTED · error_rate > 5% for 60s"]
+  Triage["TRIAGE · queries error_rate, latency_p99, request_rate · Output: severity, confirmed_services[]"]
+  Route{"route_after_triage()"}
+  Trace["TRACE · query_traces, cascade path · first_error_service"]
+  Log["LOG · query_logs, error pattern · first_time"]
+  Metric["METRIC · query error_rate, p99, db_conns · memory, goroutines"]
+  FanIn{{"_dedupe_merge reducer · waits for ALL three"}}
+  Corr["CORRELATION · temporal causal chain · RAG: ChromaDB -> past incidents"]
+  RCA["ROOT CAUSE · first event in causal chain · confidence 0.0-1.0"]
+  PM["POSTMORTEM · structured markdown report · stores in ChromaDB if >= 0.5"]
+
+  INCIDENT --> Triage
+  Triage --> Route
+  Route -->|"Send()"| Trace
+  Route -->|"Send()"| Log
+  Route -->|"Send()"| Metric
+  Trace & Log & Metric --> FanIn
+  FanIn --> Corr
+  Corr --> RCA
+  RCA --> PM
 ```
 
 **Parallel execution detail:**
@@ -862,4 +833,5 @@ The postmortem reports in [docs/postmortem-examples/](docs/postmortem-examples/)
 are real outputs from real failures injected into real instrumented services.
 The pipeline works with no internet connection using Ollama, or with higher
 quality output using the Gemini API.*
+
 
